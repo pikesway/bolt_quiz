@@ -1,27 +1,34 @@
 import React, { useState } from 'react';
 import { Quiz, Question, Answer, PersonalityType } from '../types/quiz';
 import { X, Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
+import { ImageUpload } from './ImageUpload';
+import { uploadImage } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
 interface QuizBuilderProps {
   quiz?: Quiz;
-  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>) => void;
+  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => void;
   onClose: () => void;
 }
 
 export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
+  const { user } = useAuth();
   const [title, setTitle] = useState(quiz?.title || '');
   const [description, setDescription] = useState(quiz?.description || '');
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [questions, setQuestions] = useState<Question[]>(quiz?.questions || []);
   const [personalityTypes, setPersonalityTypes] = useState<PersonalityType[]>(
     quiz?.personalityTypes || []
   );
   const [activeTab, setActiveTab] = useState<'basic' | 'questions' | 'types'>('basic');
+  const [saving, setSaving] = useState(false);
 
   const addQuestion = () => {
     const newQuestion: Question = {
       id: Math.random().toString(36).substr(2, 9),
       text: '',
-      answers: []
+      answers: [],
+      orderIndex: questions.length
     };
     setQuestions([...questions, newQuestion]);
   };
@@ -39,7 +46,8 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
       id: Math.random().toString(36).substr(2, 9),
       text: '',
       personalityType: personalityTypes[0]?.id || '',
-      weight: 1
+      weight: 1,
+      orderIndex: 0
     };
     
     setQuestions(questions.map(q => 
@@ -93,19 +101,68 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     setPersonalityTypes(personalityTypes.filter(pt => pt.id !== id));
   };
 
+  const updateQuestionImage = async (questionId: string, file: File | null) => {
+    if (!file || !user) return;
+
+    try {
+      const imagePath = `${user.id}/questions/${Date.now()}-${file.name}`;
+      const imageUrl = await uploadImage(file, 'quiz-images', imagePath);
+      
+      setQuestions(questions.map(q => 
+        q.id === questionId ? { ...q, imageUrl } : q
+      ));
+    } catch (error) {
+      console.error('Error uploading question image:', error);
+    }
+  };
+
+  const removeQuestionImage = (questionId: string) => {
+    setQuestions(questions.map(q => 
+      q.id === questionId ? { ...q, imageUrl: undefined } : q
+    ));
+  };
+
+  const updatePersonalityTypeImage = async (typeId: string, file: File | null) => {
+    if (!file || !user) return;
+
+    try {
+      const imagePath = `${user.id}/results/${Date.now()}-${file.name}`;
+      const imageUrl = await uploadImage(file, 'quiz-images', imagePath);
+      
+      setPersonalityTypes(personalityTypes.map(pt => 
+        pt.id === typeId ? { ...pt, resultImageUrl: imageUrl } : pt
+      ));
+    } catch (error) {
+      console.error('Error uploading result image:', error);
+    }
+  };
+
+  const removePersonalityTypeImage = (typeId: string) => {
+    setPersonalityTypes(personalityTypes.map(pt => 
+      pt.id === typeId ? { ...pt, resultImageUrl: undefined } : pt
+    ));
+  };
+
   const handleSave = () => {
     if (!title || !description || questions.length === 0 || personalityTypes.length === 0) {
       alert('Please fill in all required fields');
       return;
     }
 
-    onSave({
-      title,
-      description,
-      questions,
-      personalityTypes,
-      isPublished: false
-    });
+    setSaving(true);
+    
+    try {
+      onSave({
+        title,
+        description,
+        coverImageUrl: quiz?.coverImageUrl,
+        questions,
+        personalityTypes,
+        isPublished: false
+      }, coverImageFile || undefined);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -124,10 +181,11 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
           
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+            disabled={saving}
+            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            Save Quiz
+            {saving ? 'Saving...' : 'Save Quiz'}
           </button>
         </div>
       </div>
@@ -157,6 +215,14 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
 
         {activeTab === 'basic' && (
           <div className="bg-white rounded-lg p-6 shadow-sm">
+            <ImageUpload
+              currentImage={quiz?.coverImageUrl}
+              onImageChange={setCoverImageFile}
+              onImageRemove={() => setCoverImageFile(null)}
+              label="Cover Image"
+              className="mb-6"
+            />
+            
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Quiz Title
@@ -208,6 +274,14 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                     placeholder="Enter your question..."
                   />
                 </div>
+                
+                <ImageUpload
+                  currentImage={question.imageUrl}
+                  onImageChange={(file) => updateQuestionImage(question.id, file)}
+                  onImageRemove={() => removeQuestionImage(question.id)}
+                  label="Question Image (Optional)"
+                  className="mb-4"
+                />
                 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -312,6 +386,14 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                       placeholder="Describe this personality type..."
                     />
                   </div>
+                  
+                  <ImageUpload
+                    currentImage={type.resultImageUrl}
+                    onImageChange={(file) => updatePersonalityTypeImage(type.id, file)}
+                    onImageRemove={() => removePersonalityTypeImage(type.id)}
+                    label="Result Image (Optional)"
+                    className="mb-4"
+                  />
                   
                   <div className="flex items-center gap-4">
                     <div>

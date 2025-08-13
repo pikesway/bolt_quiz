@@ -10,7 +10,18 @@ interface QuizCardProps {
 
 export function QuizCard({ quiz, onEdit, onTake }: QuizCardProps) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+      {quiz.coverImageUrl && (
+        <div className="h-48 overflow-hidden">
+          <img
+            src={quiz.coverImageUrl}
+            alt={quiz.title}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+      
+      <div className="p-6">
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">{quiz.title}</h3>
@@ -54,6 +65,7 @@ export function QuizCard({ quiz, onEdit, onTake }: QuizCardProps) {
           <Edit className="w-4 h-4" />
           Edit
         </button>
+      </div>
       </div>
     </div>
   );

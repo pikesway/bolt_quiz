@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Quiz, PersonalityType } from './types/quiz';
 import { useQuizzes } from './hooks/useQuizzes';
+import { useAuth } from './hooks/useAuth';
 import { Dashboard } from './components/Dashboard';
 import { QuizBuilder } from './components/QuizBuilder';
 import { QuizTaker } from './components/QuizTaker';
@@ -9,12 +10,21 @@ import { QuizResult } from './components/QuizResult';
 type AppView = 'dashboard' | 'builder' | 'taker' | 'result';
 
 function App() {
+  const { loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
   const [quizResult, setQuizResult] = useState<PersonalityType | null>(null);
   
   const { createQuiz, updateQuiz } = useQuizzes();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
 
   const handleCreateQuiz = () => {
     setEditingQuiz(null);
@@ -31,11 +41,11 @@ function App() {
     setCurrentView('taker');
   };
 
-  const handleSaveQuiz = (quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>) => {
+  const handleSaveQuiz = (quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
     if (editingQuiz) {
-      updateQuiz(editingQuiz.id, quizData);
+      updateQuiz(editingQuiz.id, quizData, coverImageFile);
     } else {
-      createQuiz(quizData);
+      createQuiz(quizData, coverImageFile);
     }
     setCurrentView('dashboard');
   };

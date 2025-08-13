@@ -105,6 +105,16 @@ export function QuizTaker({ quiz, onComplete, onBack }: QuizTakerProps) {
 
           {/* Question Card */}
           <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+            {currentQuestion.imageUrl && (
+              <div className="mb-6">
+                <img
+                  src={currentQuestion.imageUrl}
+                  alt="Question illustration"
+                  className="w-full h-64 object-cover rounded-lg"
+                />
+              </div>
+            )}
+            
             <h2 className="text-xl font-semibold text-gray-900 mb-6">
               {currentQuestion.text}
             </h2>

@@ -1,11 +1,18 @@
 import React from 'react';
-import { Plus, User } from 'lucide-react';
+import { Plus, User, LogOut } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
 interface HeaderProps {
   onCreateQuiz: () => void;
+  onAuthClick: () => void;
 }
 
-export function Header({ onCreateQuiz }: HeaderProps) {
+export function Header({ onCreateQuiz, onAuthClick }: HeaderProps) {
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -23,9 +30,28 @@ export function Header({ onCreateQuiz }: HeaderProps) {
             Create Quiz
           </button>
           
-          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-            <User className="w-5 h-5 text-purple-600" />
-          </div>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600">
+                {user.user_metadata?.full_name || user.email}
+              </span>
+              <button
+                onClick={handleSignOut}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onAuthClick}
+              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <User className="w-4 h-4" />
+              Sign In
+            </button>
+          )}
         </div>
       </div>
     </header>

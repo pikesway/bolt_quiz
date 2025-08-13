@@ -1,8 +1,11 @@
 import React from 'react';
+import { useState } from 'react';
 import { Quiz } from '../types/quiz';
 import { useQuizzes } from '../hooks/useQuizzes';
+import { useAuth } from '../hooks/useAuth';
 import { QuizCard } from './QuizCard';
 import { Header } from './Header';
+import { AuthModal } from './AuthModal';
 import { Plus, TrendingUp, Users, Eye } from 'lucide-react';
 
 interface DashboardProps {
@@ -12,12 +15,14 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardProps) {
+  const { user } = useAuth();
   const { quizzes, loading } = useQuizzes();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Header onCreateQuiz={onCreateQuiz} />
+        <Header onCreateQuiz={onCreateQuiz} onAuthClick={() => setShowAuthModal(true)} />
         <div className="max-w-7xl mx-auto p-6">
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -30,9 +35,17 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
   const totalTakes = quizzes.reduce((sum, quiz) => sum + quiz.totalTakes, 0);
   const publishedQuizzes = quizzes.filter(quiz => quiz.isPublished).length;
 
+  const handleCreateQuiz = () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    onCreateQuiz();
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header onCreateQuiz={onCreateQuiz} />
+      <Header onCreateQuiz={handleCreateQuiz} onAuthClick={() => setShowAuthModal(true)} />
       
       <div className="max-w-7xl mx-auto p-6">
         {/* Stats */}
@@ -93,7 +106,7 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">Your Quizzes</h2>
             <button
-              onClick={onCreateQuiz}
+              onClick={handleCreateQuiz}
               className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -109,7 +122,7 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
               <h3 className="text-lg font-medium text-gray-900 mb-2">No quizzes yet</h3>
               <p className="text-gray-600 mb-6">Create your first personality quiz to get started</p>
               <button
-                onClick={onCreateQuiz}
+                onClick={handleCreateQuiz}
                 className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
               >
                 Create Your First Quiz
@@ -129,6 +142,11 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
           )}
         </div>
       </div>
+      
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </div>
   );
 }

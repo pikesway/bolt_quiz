@@ -48,21 +48,40 @@ export function QuizResult({ quiz, result, onBack, onRetake }: QuizResultProps) 
           {/* Result Card */}
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
             {/* Result Header */}
-            <div 
-              className="px-8 py-12 text-center text-white relative"
-              style={{ 
-                background: `linear-gradient(135deg, ${result.color}, ${result.color}dd)` 
-              }}
-            >
-              <div className="absolute inset-0 bg-black/10"></div>
-              <div className="relative">
-                <div className="w-20 h-20 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center text-3xl">
-                  ★
+            {result.resultImageUrl ? (
+              <div className="relative h-64">
+                <img
+                  src={result.resultImageUrl}
+                  alt={result.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <div className="w-20 h-20 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center text-3xl">
+                      ★
+                    </div>
+                    <h1 className="text-3xl font-bold mb-2">Congratulations!</h1>
+                    <p className="text-lg opacity-90">You completed "{quiz.title}"</p>
+                  </div>
                 </div>
-                <h1 className="text-3xl font-bold mb-2">Congratulations!</h1>
-                <p className="text-lg opacity-90">You completed "{quiz.title}"</p>
               </div>
-            </div>
+            ) : (
+              <div 
+                className="px-8 py-12 text-center text-white relative"
+                style={{ 
+                  background: `linear-gradient(135deg, ${result.color}, ${result.color}dd)` 
+                }}
+              >
+                <div className="absolute inset-0 bg-black/10"></div>
+                <div className="relative">
+                  <div className="w-20 h-20 mx-auto mb-4 bg-white/20 rounded-full flex items-center justify-center text-3xl">
+                    ★
+                  </div>
+                  <h1 className="text-3xl font-bold mb-2">Congratulations!</h1>
+                  <p className="text-lg opacity-90">You completed "{quiz.title}"</p>
+                </div>
+              </div>
+            )}
 
             {/* Result Content */}
             <div className="p-8">
