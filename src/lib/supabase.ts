@@ -68,8 +68,8 @@ export const signUp = async (email: string, password: string, fullName: string) 
     
     if (profileError) {
       console.error('Error creating profile:', profileError);
-      // Don't return the profile error as it might be a duplicate
-      // The user signup was successful, so we should allow them to proceed
+      // Return the profile error to prevent incomplete user state
+      return { data, error: profileError };
     }
   }
   
