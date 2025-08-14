@@ -55,6 +55,24 @@ export const signUp = async (email: string, password: string, fullName: string) 
       }
     }
   });
+  
+  // If signup was successful, create a profile entry
+  if (data.user && !error) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert({
+        id: data.user.id,
+        email: data.user.email!,
+        full_name: fullName
+      });
+    
+    if (profileError) {
+      console.error('Error creating profile:', profileError);
+      // Don't return the profile error as it might be a duplicate
+      // The user signup was successful, so we should allow them to proceed
+    }
+  }
+  
   return { data, error };
 };
 
