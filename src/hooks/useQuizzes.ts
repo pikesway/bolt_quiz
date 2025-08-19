@@ -67,10 +67,10 @@ const mockQuizzes: Quiz[] = [
         id: 'q1',
         text: 'When facing a difficult decision, you typically:',
         answers: [
-          { id: 'a1', text: 'Analyze all data thoroughly before deciding', personalityType: 'analytical', weight: 1 },
-          { id: 'a2', text: 'Trust your gut instinct', personalityType: 'intuitive', weight: 1 },
-          { id: 'a3', text: 'Consult with your team first', personalityType: 'collaborative', weight: 1 },
-          { id: 'a4', text: 'Make quick decisions and adapt as needed', personalityType: 'decisive', weight: 1 }
+          { id: 'a1', text: 'Analyze all data thoroughly before deciding', personalityType: 'analytical', weight: 1, orderIndex: 0 },
+          { id: 'a2', text: 'Trust your gut instinct', personalityType: 'intuitive', weight: 1, orderIndex: 1 },
+          { id: 'a3', text: 'Consult with your team first', personalityType: 'collaborative', weight: 1, orderIndex: 2 },
+          { id: 'a4', text: 'Make quick decisions and adapt as needed', personalityType: 'decisive', weight: 1, orderIndex: 3 }
         ],
         orderIndex: 0,
         imageUrl: 'https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=800'
@@ -79,10 +79,10 @@ const mockQuizzes: Quiz[] = [
         id: 'q2',
         text: 'Your ideal work environment is:',
         answers: [
-          { id: 'b1', text: 'Structured with clear processes', personalityType: 'analytical', weight: 1 },
-          { id: 'b2', text: 'Creative and flexible', personalityType: 'intuitive', weight: 1 },
-          { id: 'b3', text: 'Team-oriented and collaborative', personalityType: 'collaborative', weight: 1 },
-          { id: 'b4', text: 'Fast-paced and dynamic', personalityType: 'decisive', weight: 1 }
+          { id: 'b1', text: 'Structured with clear processes', personalityType: 'analytical', weight: 1, orderIndex: 0 },
+          { id: 'b2', text: 'Creative and flexible', personalityType: 'intuitive', weight: 1, orderIndex: 1 },
+          { id: 'b3', text: 'Team-oriented and collaborative', personalityType: 'collaborative', weight: 1, orderIndex: 2 },
+          { id: 'b4', text: 'Fast-paced and dynamic', personalityType: 'decisive', weight: 1, orderIndex: 3 }
         ],
         orderIndex: 1,
         imageUrl: 'https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg?auto=compress&cs=tinysrgb&w=800'
@@ -252,17 +252,85 @@ export function useQuizzes() {
 
       if (quizError) throw quizError;
 
-    const newQuiz: Quiz = {
-      ...quiz,
+      // Create personality types
+      const { data: dbPersonalityTypes, error: typesError } = await supabase
+        .from('personality_types')
+        .insert(
+          quiz.personalityTypes.map(type => ({
+            quiz_id: dbQuiz.id,
+            name: type.name,
+            description: type.description,
+            color: type.color,
+            icon: type.icon,
+            result_image_url: type.resultImageUrl
+          }))
+        )
+        .select();
+
+      if (typesError) throw typesError;
+
+      // Create questions
+      const { data: dbQuestions, error: questionsError } = await supabase
+        .from('questions')
+        .insert(
+          quiz.questions.map(question => ({
+            quiz_id: dbQuiz.id,
+            text: question.text,
+            image_url: question.imageUrl,
+            order_index: question.orderIndex
+          }))
+        )
+        .select();
+
+      if (questionsError) throw questionsError;
+
+      // Create answers for each question
+      const answersToInsert = quiz.questions.flatMap((question, qIndex) =>
+        question.answers.map(answer => ({
+          question_id: dbQuestions[qIndex].id,
+          text: answer.text,
+          personality_type_id: dbPersonalityTypes.find(
+            pt => pt.name === quiz.personalityTypes.find(t => t.id === answer.personalityType)?.name
+          )?.id,
+          weight: answer.weight,
+          order_index: answer.orderIndex
+        }))
+      );
+
+      const { error: answersError } = await supabase
+        .from('answers')
+        .insert(answersToInsert);
+
+      if (answersError) throw answersError;
+
+      // Construct the complete quiz object with all related data
+      const newQuiz: Quiz = {
+        ...quiz,
         id: dbQuiz.id,
         userId: user.id,
         coverImageUrl,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-      totalTakes: 0
-    };
-    setQuizzes(prev => [...prev, newQuiz]);
-    return newQuiz;
+        questions: quiz.questions.map((q, qIndex) => ({
+          ...q,
+          id: dbQuestions[qIndex].id,
+          answers: q.answers.map(a => ({
+            ...a,
+            id: Math.random().toString(36).substr(2, 9), // Temporary ID since we don't select answers
+            personalityType: dbPersonalityTypes.find(
+              pt => pt.name === quiz.personalityTypes.find(t => t.id === a.personalityType)?.name
+            )?.id || a.personalityType
+          }))
+        })),
+        personalityTypes: quiz.personalityTypes.map((pt, ptIndex) => ({
+          ...pt,
+          id: dbPersonalityTypes[ptIndex].id
+        })),
+        createdAt: new Date().toISOString().split('T')[0],
+        updatedAt: new Date().toISOString().split('T')[0],
+        totalTakes: 0
+      };
+
+      setQuizzes(prev => [...prev, newQuiz]);
+      return newQuiz;
     } catch (error) {
       console.error('Error creating quiz:', error);
       throw error;

@@ -56,23 +56,6 @@ export const signUp = async (email: string, password: string, fullName: string) 
     }
   });
   
-  // If signup was successful, create a profile entry
-  if (data.user && !error) {
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: data.user.id,
-        email: data.user.email!,
-        full_name: fullName
-      });
-    
-    if (profileError) {
-      console.error('Error creating profile:', profileError);
-      // Return the profile error to prevent incomplete user state
-      return { data, error: profileError };
-    }
-  }
-  
   return { data, error };
 };
 

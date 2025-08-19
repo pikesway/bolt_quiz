@@ -117,10 +117,10 @@ CREATE POLICY "Users can update own profile"
   TO authenticated
   USING (auth.uid() = id);
 
-CREATE POLICY "Users can insert own profile"
+CREATE POLICY "Enable insert for authenticated users and service role"
   ON profiles FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = id);
+  TO authenticated, service_role
+  WITH CHECK (true);
 
 -- Quizzes policies
 CREATE POLICY "Users can read own quizzes"
@@ -264,13 +264,12 @@ CREATE POLICY "Quiz owners can read results for their quizzes"
   );
 
 -- Create storage buckets
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('quiz-images', 'quiz-images', true)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('quiz-images', 'quiz-images', true);
 
--- Storage policies for quiz images
+-- Set up storage policies
 CREATE POLICY "Anyone can view quiz images"
   ON storage.objects FOR SELECT
+  TO public
   USING (bucket_id = 'quiz-images');
 
 CREATE POLICY "Authenticated users can upload quiz images"
@@ -278,39 +277,34 @@ CREATE POLICY "Authenticated users can upload quiz images"
   TO authenticated
   WITH CHECK (bucket_id = 'quiz-images');
 
-CREATE POLICY "Users can update their own quiz images"
+CREATE POLICY "Users can update own quiz images"
   ON storage.objects FOR UPDATE
   TO authenticated
-  USING (bucket_id = 'quiz-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+  USING (bucket_id = 'quiz-images');
 
-CREATE POLICY "Users can delete their own quiz images"
+CREATE POLICY "Users can delete own quiz images"
   ON storage.objects FOR DELETE
   TO authenticated
-  USING (bucket_id = 'quiz-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+  USING (bucket_id = 'quiz-images');
 
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_quizzes_user_id ON quizzes(user_id);
-CREATE INDEX IF NOT EXISTS idx_quizzes_published ON quizzes(is_published);
-CREATE INDEX IF NOT EXISTS idx_questions_quiz_id ON questions(quiz_id);
-CREATE INDEX IF NOT EXISTS idx_questions_order ON questions(quiz_id, order_index);
-CREATE INDEX IF NOT EXISTS idx_answers_question_id ON answers(question_id);
-CREATE INDEX IF NOT EXISTS idx_personality_types_quiz_id ON personality_types(quiz_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_responses_quiz_id ON quiz_responses(quiz_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_responses_session ON quiz_responses(session_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_results_quiz_id ON quiz_results(quiz_id);
-
--- Function to handle user profile creation
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS trigger AS $$
+-- Create trigger to create profile on user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO profiles (id, email, full_name)
-  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name');
-  RETURN new;
+  INSERT INTO public.profiles (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data->>'full_name'
+  );
+  RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- Trigger to create profile on user signup
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+-- Trigger the function every time a user is created
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
