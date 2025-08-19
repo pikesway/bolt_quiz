@@ -51,7 +51,8 @@ const transformQuizFromDB = (
     createdAt: dbQuiz.created_at.split('T')[0],
     updatedAt: dbQuiz.updated_at.split('T')[0],
     isPublished: dbQuiz.is_published,
-    totalTakes: dbQuiz.total_takes
+    totalTakes: dbQuiz.total_takes,
+    slug: dbQuiz.slug
   };
 };
 
@@ -245,7 +246,8 @@ export function useQuizzes() {
           title: quiz.title,
           description: quiz.description,
           cover_image_url: coverImageUrl,
-          is_published: quiz.isPublished
+          is_published: quiz.isPublished,
+          slug: quiz.slug
         })
         .select()
         .single();
@@ -365,7 +367,8 @@ export function useQuizzes() {
           description: updates.description,
           cover_image_url: coverImageUrl,
           is_published: updates.isPublished,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          slug: updates.slug
         })
         .eq('id', id);
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Quiz, PersonalityType } from './types/quiz';
 import { useQuizzes } from './hooks/useQuizzes';
 import { useAuth } from './hooks/useAuth';
+import { ThemeProvider } from './hooks/useTheme';
 import { Dashboard } from './components/Dashboard';
 import { QuizBuilder } from './components/QuizBuilder';
 import { QuizTaker } from './components/QuizTaker';
@@ -9,7 +10,7 @@ import { QuizResult } from './components/QuizResult';
 
 type AppView = 'dashboard' | 'builder' | 'taker' | 'result';
 
-function App() {
+function AppContent() {
   const { loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -20,7 +21,7 @@ function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
       </div>
     );
@@ -106,6 +107,16 @@ function App() {
         />
       );
   }
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+        <AppContent />
+      </div>
+    </ThemeProvider>
+  );
 }
 
 export default App;

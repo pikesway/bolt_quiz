@@ -35,6 +35,7 @@ export interface Quiz {
   updatedAt: string;
   isPublished: boolean;
   totalTakes: number;
+  slug?: string;
 }
 
 export interface QuizResponse {
@@ -52,6 +53,7 @@ export interface DatabaseQuiz {
   total_takes: number;
   created_at: string;
   updated_at: string;
+  slug?: string;
 }
 
 export interface DatabaseQuestion {

@@ -1,57 +1,43 @@
 import React from 'react';
-import { Plus, User, LogOut } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
+import { Sun, Moon } from 'lucide-react';
 
-interface HeaderProps {
-  onCreateQuiz: () => void;
-  onAuthClick: () => void;
-}
-
-export function Header({ onCreateQuiz, onAuthClick }: HeaderProps) {
+export function Header() {
   const { user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
-  const handleSignOut = async () => {
-    await signOut();
-  };
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between max-w-7xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">QuizCraft</h1>
-          <p className="text-sm text-gray-500">Create engaging personality quizzes</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onCreateQuiz}
-            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Create Quiz
-          </button>
+    <header className="bg-white dark:bg-gray-800 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-purple-600 dark:text-purple-400">Bolt Quiz</h1>
           
-          {user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600">
-                {user.user_metadata?.full_name || user.email}
-              </span>
-              <button
-                onClick={handleSignOut}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </button>
-            </div>
-          ) : (
+          <div className="flex items-center space-x-4">
             <button
-              onClick={onAuthClick}
-              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors duration-200"
+              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
-              <User className="w-4 h-4" />
-              Sign In
+              {theme === 'light' ? (
+                <Moon className="w-5 h-5" />
+              ) : (
+                <Sun className="w-5 h-5" />
+              )}
             </button>
-          )}
+
+            {user ? (
+              <div className="flex items-center space-x-4">
+                <span className="text-gray-700 dark:text-gray-300">{user.email}</span>
+                <button
+                  onClick={signOut}
+                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors duration-200"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>

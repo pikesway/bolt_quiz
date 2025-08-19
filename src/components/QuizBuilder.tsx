@@ -15,6 +15,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   const { user } = useAuth();
   const [title, setTitle] = useState(quiz?.title || '');
   const [description, setDescription] = useState(quiz?.description || '');
+  const [slug, setSlug] = useState(quiz?.slug || '');
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [questions, setQuestions] = useState<Question[]>(quiz?.questions || []);
   const [personalityTypes, setPersonalityTypes] = useState<PersonalityType[]>(
@@ -144,8 +145,15 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   };
 
   const handleSave = () => {
-    if (!title || !description || questions.length === 0 || personalityTypes.length === 0) {
+    if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
       alert('Please fill in all required fields');
+      return;
+    }
+
+    // Validate slug format
+    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    if (!slugRegex.test(slug)) {
+      alert('Slug must contain only lowercase letters, numbers, and hyphens');
       return;
     }
 
@@ -158,7 +166,8 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         coverImageUrl: quiz?.coverImageUrl,
         questions,
         personalityTypes,
-        isPublished: false
+        isPublished: false,
+        slug
       }, coverImageFile || undefined);
     } finally {
       setSaving(false);
@@ -234,6 +243,25 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Enter quiz title..."
               />
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Quiz URL Slug
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">quizgamez.com/</span>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="your-quiz-name"
+                />
+              </div>
+              <p className="mt-1 text-sm text-gray-500">
+                This will be the URL of your quiz. Use only lowercase letters, numbers, and hyphens.
+              </p>
             </div>
             
             <div className="mb-6">
