@@ -13,7 +13,7 @@ type AppView = 'dashboard' | 'builder' | 'taker' | 'result';
 
 function AppContent() {
   const { loading: authLoading, user } = useAuth();
-  const { createQuiz, updateQuiz, loading: quizLoading, quizzes } = useQuizzes();
+  const { createQuiz, updateQuiz } = useQuizzes();
 
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -55,7 +55,7 @@ function AppContent() {
         ? await updateQuiz(editingQuiz.id, quizData, coverImageFile)
         : await createQuiz(quizData as Quiz, coverImageFile);
       
-      return result;
+      return { error: undefined, ...result };
     } catch (error) {
       console.error('Error saving quiz:', error);
       return { error: error instanceof Error ? error : new Error('Failed to save quiz') };

@@ -74,7 +74,7 @@ export function useQuizzes() {
       setError(null);
 
       // Delete quiz and related data will be cascade deleted due to foreign key constraints
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabase!
         .from('quizzes')
         .delete()
         .eq('id', quizId);
@@ -84,7 +84,7 @@ export function useQuizzes() {
       // Update local state
       setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== quizId));
 
-      return { error: null };
+      return { error: null, quizId: quizData.id };
     } catch (error) {
       console.error('Error deleting quiz:', error);
       setError(error as Error);
@@ -236,14 +236,28 @@ export function useQuizzes() {
   };
 
   const createQuiz = async (quiz: Quiz, coverImageFile?: File) => {
+    console.log('Creating/updating quiz with data:', { 
+      hasQuestions: quiz.questions.length > 0,
+      hasPersonalityTypes: quiz.personalityTypes.length > 0,
+      isPublished: quiz.isPublished,
+      quizId: quiz.id
+    });
     try {
-      console.log('Starting quiz creation...');
+      console.log('Starting quiz creation/update...');
       setError(null);
+      
+      // If we have a quiz ID, we're updating an existing quiz
+      if (quiz.id) {
+        return updateQuiz(quiz.id, quiz, coverImageFile);
+      }
+      
+      // For new quizzes, generate a slug
       const timestamp = Date.now();
       const slug = quiz.slug || `${slugify(quiz.title)}-${timestamp}`;
 
       console.log('Creating quiz with slug:', slug);
       let quizData;
+      // Step 1: Create initial quiz record
       const { data: dbQuiz, error: quizError } = await supabase
         .from('quizzes')
         .insert({
@@ -251,7 +265,7 @@ export function useQuizzes() {
           description: quiz.description,
           user_id: user?.id,
           slug: slug,
-          is_published: quiz.isPublished || false,
+          is_published: false, // Always start as unpublished
           total_takes: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -289,11 +303,17 @@ export function useQuizzes() {
 
       console.log('Personality types created successfully');
 
-      // Create a map of personality type names to their IDs
+      // Create a map of personality type IDs and names to their database IDs
       const personalityTypeMap = dbPersonalityTypes.reduce((acc, pt) => {
+        // Store mappings for both ID and name
         acc[pt.name] = pt.id;
+        acc[pt.id] = pt.id; // Map the frontend ID directly
         return acc;
       }, {} as Record<string, string>);
+
+      console.log('Created personality types:', dbPersonalityTypes);
+      console.log('Personality type map:', personalityTypeMap);
+      console.log('Quiz questions with answers:', quiz.questions);
 
       // Insert questions
       console.log('Creating questions...');
@@ -319,11 +339,32 @@ export function useQuizzes() {
       console.log('Creating answers...');
       const answers = quiz.questions.flatMap((q, qIndex) =>
         q.answers.map((a, aIndex) => {
-          // Try to match by name first
+          // Log the current answer being processed
+          console.log('Processing answer:', {
+            questionIndex: qIndex,
+            answerIndex: aIndex,
+            answer: a,
+            personalityTypeId: a.personalityType
+          });
+
+          // Try to match by ID first, then by name
           const typeId = personalityTypeMap[a.personalityType];
           if (!typeId) {
             console.error('Available personality types:', personalityTypeMap);
             console.error('Attempted to match:', a.personalityType);
+            // Try to find a matching personality type by name
+            const matchingType = dbPersonalityTypes.find(pt => pt.name === a.personalityType);
+            if (matchingType) {
+              console.log('Found matching type by name:', matchingType);
+              return {
+                question_id: dbQuestions[qIndex].id,
+                text: a.text,
+                personality_type_id: matchingType.id,
+                weight: a.weight || 1,
+                order_index: aIndex,
+                created_at: new Date().toISOString()
+              };
+            }
             throw new Error(`Personality type ${a.personalityType} not found`);
           }
           return {
@@ -377,7 +418,7 @@ export function useQuizzes() {
       // Update the quizzes state directly
       setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
 
-      return { error: null };
+      return { error: null, quizId };
     } catch (error) {
       console.error('Error creating quiz:', error);
       setError(error as Error);

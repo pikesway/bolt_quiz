@@ -7,11 +7,11 @@ import { useAuth } from '../hooks/useAuth';
 
 interface QuizBuilderProps {
   quiz?: Quiz;
-  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => Promise<{ error?: Error }>;
+  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => Promise<{ error?: Error; quizId?: string }>;
   onClose: () => void;
 }
 
-const SaveToast = ({ show, onClose }: { show: boolean; onClose: () => void }) => {
+const SaveToast = ({ show, message, onClose }: { show: boolean; message: string; onClose: () => void }) => {
   if (!show) return null;
 
   return (
@@ -19,7 +19,7 @@ const SaveToast = ({ show, onClose }: { show: boolean; onClose: () => void }) =>
       className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-slide-up z-50"
     >
       <Save className="w-5 h-5" />
-      <span>Quiz saved successfully!</span>
+      <span>{message}</span>
       <button 
         onClick={onClose}
         className="ml-4 hover:text-green-200"
@@ -40,81 +40,134 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   const [personalityTypes, setPersonalityTypes] = useState<PersonalityType[]>(
     quiz?.personalityTypes || []
   );
-  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<'basic' | 'questions' | 'types'>('basic');
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [quizId, setQuizId] = useState<string | null>(quiz?.id || null);
   const [saving, setSaving] = useState(false);
   const [isPublished, setIsPublished] = useState(quiz?.isPublished || false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cleanup effect
+  // Reset toast state when component unmounts
   useEffect(() => {
-    return () => {
-      if (showSaveSuccess) {
-        setShowSaveSuccess(false);
-      }
-    };
+    return () => setShowToast(false);
   }, []);
 
   const handleSave = async () => {
-    setShowSaveSuccess(false); // Reset toast state before saving
-    
-    if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    // Validate slug format
-    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-    if (!slugRegex.test(slug)) {
-      alert('Slug must contain only lowercase letters, numbers, and hyphens');
-      return;
-    }
-
-    // Validate that all answers have a personality type selected
-    const invalidQuestion = questions.find(q => 
-      q.answers.some(a => !a.personalityType)
-    );
-    if (invalidQuestion) {
-      alert('Please select a personality type for all answers');
-      return;
-    }
-
+    if (saving) return;
     setSaving(true);
+    let toastTimer: NodeJS.Timeout;
     
     try {
-      const quizData = {
-        title,
-        description,
-        coverImageUrl: quiz?.coverImageUrl,
-        questions,
-        personalityTypes,
-        isPublished,
-        slug
-      };
       
-      console.log('Saving quiz...', quiz ? 'Update' : 'Create');
-      const result = await onSave(quizData, coverImageFile || undefined);
-      
-      if (result.error) {
-        console.error('Save error:', result.error);
-        alert(`Failed to save quiz: ${result.error.message}`);
-      } else {
-        console.log('Save successful');
-        setShowSaveSuccess(true);
-        // Auto-hide toast after 3 seconds
-        setTimeout(() => setShowSaveSuccess(false), 3000);
+      // Step 1: Save basic info
+      if (currentStep === 1) {
+        if (!title || !description || !slug) {
+          alert('Please fill in all basic information fields');
+          return;
+        }
+        
+        const basicData = {
+          title,
+          description,
+          coverImageUrl: quiz?.coverImageUrl,
+          questions: [],
+          personalityTypes: [],
+          isPublished: false,
+          slug,
+          ...(quizId && { id: quizId })
+        };
+        
+        const result = await onSave(basicData, coverImageFile || undefined);
+        if (result.error) throw result.error;
+        
+        // Store the quiz ID for subsequent steps
+        if (!quizId && result.quizId) {
+          setQuizId(result.quizId);
+        }
+        
+        setCurrentStep(2);
       }
+      
+      // Step 2: Save personality types
+      else if (currentStep === 2) {
+        if (personalityTypes.length === 0) {
+          alert('Please add at least one personality type');
+          return;
+        }
+        
+        const typesData = {
+          title,
+          description,
+          coverImageUrl: quiz?.coverImageUrl,
+          questions: [],
+          personalityTypes,
+          isPublished: false,
+          slug
+        };
+        
+        const result = await onSave(typesData, undefined);
+        if (result.error) throw result.error;
+        
+        setCurrentStep(3);
+      }
+      
+      // Step 3: Save questions and answers
+      else if (currentStep === 3) {
+        if (questions.length === 0) {
+          alert('Please add at least one question');
+          return;
+        }
+        
+        // Validate that all answers have a personality type selected
+        const invalidQuestion = questions.find(q => 
+          q.answers.some(a => !a.personalityType)
+        );
+        if (invalidQuestion) {
+          alert('Please select a personality type for all answers');
+          return;
+        }
+
+        const finalData = {
+          title,
+          description,
+          coverImageUrl: quiz?.coverImageUrl,
+          questions,
+          personalityTypes,
+          isPublished,
+          slug
+        };
+        
+        console.log('Saving final quiz data...');
+        const result = await onSave(finalData, undefined);
+        if (result.error) throw result.error;
+        
+        // Quiz is complete!
+        console.log('Quiz creation completed successfully');
+      }
+      
+      // Show success toast
+      setToastMessage('Progress saved!');
+      setShowToast(true);
+      toastTimer = setTimeout(() => setShowToast(false), 3000);
+      
     } catch (error) {
       console.error('Save error:', error);
       alert(`Failed to save quiz: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`);
     } finally {
       setSaving(false);
+      if (toastTimer) clearTimeout(toastTimer);
     }
   };
 
   const addQuestion = () => {
+    const generateQuestionId = (base: string) => {
+      return base.toLowerCase().replace(/[^a-z0-9]/g, '');
+    };
+
+    const questionId = generateQuestionId(`question-${questions.length + 1}`);
     const newQuestion: Question = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: questionId,
       text: '',
       answers: [],
       orderIndex: questions.length
@@ -131,13 +184,38 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   };
 
   const addAnswer = (questionId: string) => {
-    const newAnswer: Answer = {
-      id: Math.random().toString(36).substr(2, 9),
-      text: '',
-      personalityType: '',
-      weight: 1,
-      orderIndex: questions.find(q => q.id === questionId)?.answers.length || 0
+    const generateAnswerId = (base: string) => {
+      return base.toLowerCase().replace(/[^a-z0-9]/g, '');
     };
+
+    const question = questions.find(q => q.id === questionId);
+    const answerIndex = question?.answers.length || 0;
+    const answerId = generateAnswerId(`answer-${questionId}-${answerIndex}`);
+
+    // Ensure we have a valid personality type for the new answer
+    let defaultPersonalityType = '';
+    if (personalityTypes.length > 0) {
+      const firstType = personalityTypes[0];
+      defaultPersonalityType = firstType.id;
+      console.log('Setting default personality type:', {
+        typeId: firstType.id,
+        typeName: firstType.name
+      });
+    }
+
+    const newAnswer: Answer = {
+      id: answerId,
+      text: '',
+      personalityType: defaultPersonalityType,
+      weight: 1,
+      orderIndex: answerIndex
+    };
+
+    console.log('Creating new answer:', {
+      answerId,
+      questionId,
+      personalityType: defaultPersonalityType
+    });
     
     setQuestions(questions.map(q => 
       q.id === questionId 
@@ -169,8 +247,13 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     const colors = ['#3B82F6', '#8B5CF6', '#14B8A6', '#F59E0B', '#EF4444', '#10B981'];
     const icons = ['Star', 'Heart', 'Lightbulb', 'Shield', 'Zap', 'Crown'];
     
+    const generateTypeId = (base: string) => {
+      return base.toLowerCase().replace(/[^a-z0-9]/g, '');
+    };
+
+    const typeId = generateTypeId(`type-${personalityTypes.length + 1}`);
     const newType: PersonalityType = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: typeId,
       name: '',
       description: '',
       color: colors[personalityTypes.length % colors.length],
@@ -278,7 +361,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
       setSlug(importedQuiz.slug || '');
       setPersonalityTypes(personalityTypes);
       setQuestions(questions);
-      setActiveTab('basic');
+      setCurrentStep(1);
     } catch (error) {
       alert('Error importing quiz: ' + (error instanceof Error ? error.message : 'Invalid file format'));
       console.error('Import error:', error);
@@ -290,10 +373,172 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     }
   };
 
+  const renderStepContent = () => {
+    switch(currentStep) {
+      case 1:
+        return (
+          <div className="space-y-4">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Title</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                placeholder="Enter quiz title"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                rows={3}
+                placeholder="Enter quiz description"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Slug</label>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                placeholder="Enter URL slug"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Cover Image</label>
+              <ImageUpload
+                imageUrl={quiz?.coverImageUrl}
+                onImageSelected={setCoverImageFile}
+              />
+            </div>
+          </div>
+        );
+        
+      case 2:
+        return (
+          <div className="space-y-4">
+            {personalityTypes.map((type) => (
+              <div key={type.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+                <div className="flex-1 space-y-4 mr-4">
+                  <input
+                    type="text"
+                    value={type.name}
+                    onChange={(e) => updatePersonalityType(type.id, { name: e.target.value })}
+                    className="w-full px-4 py-2 border rounded"
+                    placeholder="Type name"
+                  />
+                  <textarea
+                    value={type.description}
+                    onChange={(e) => updatePersonalityType(type.id, { description: e.target.value })}
+                    className="w-full px-4 py-2 border rounded"
+                    placeholder="Type description"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={addPersonalityType}
+              className="w-full py-4 border-2 border-dashed flex items-center justify-center"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add Personality Type
+            </button>
+          </div>
+        );
+        
+      case 3:
+        return (
+          <div className="space-y-4">
+            {questions.map((question) => (
+              <div key={question.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+                <input
+                  type="text"
+                  value={question.text}
+                  onChange={(e) => updateQuestion(question.id, e.target.value)}
+                  className="w-full px-4 py-2 border rounded"
+                  placeholder="Question text"
+                />
+                {question.answers.map((answer) => (
+                  <div key={answer.id} className="flex items-center space-x-4 mt-4">
+                    <input
+                      type="text"
+                      value={answer.text}
+                      onChange={(e) => updateAnswer(question.id, answer.id, { text: e.target.value })}
+                      className="flex-1 px-4 py-2 border rounded"
+                      placeholder="Answer text"
+                    />
+                    <select
+                      value={answer.personalityType}
+                      onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
+                      className="px-4 py-2 border rounded"
+                    >
+                      <option value="">Select Type</option>
+                      {personalityTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                      </select>
+                      <button
+                        onClick={() => removeAnswer(question.id, answer.id)}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => addAnswer(question.id)}
+                    className="flex items-center text-purple-600 hover:text-purple-700 mt-4"
+                  >
+                    <Plus className="w-5 h-5 mr-2" />
+                    Add Answer
+                  </button>
+              </div>
+            ))}
+            <button
+              onClick={addQuestion}
+              className="w-full py-4 border-2 border-dashed flex items-center justify-center"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add Question
+            </button>
+          </div>
+        );
+    }
+  };
+
   return (
-    <>
+    <div>
       <div className="min-h-screen bg-white dark:bg-gray-800">
         <div className="max-w-5xl mx-auto px-4 py-8">
+          <div className="flex items-center space-x-4 mb-8">
+            {currentStep > 1 && (
+              <button
+                onClick={() => setCurrentStep(currentStep - 1)}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex-1">
+              <div className="flex items-center space-x-2">
+                <div className={`h-2 flex-1 rounded ${currentStep >= 1 ? 'bg-purple-600' : 'bg-gray-200'}`} />
+                <div className={`h-2 flex-1 rounded ${currentStep >= 2 ? 'bg-purple-600' : 'bg-gray-200'}`} />
+                <div className={`h-2 flex-1 rounded ${currentStep >= 3 ? 'bg-purple-600' : 'bg-gray-200'}`} />
+              </div>
+              <div className="mt-2 text-sm text-gray-600">
+                Step {currentStep} of 3: {currentStep === 1 ? 'Basic Info' : currentStep === 2 ? 'Personality Types' : 'Questions'}
+              </div>
+            </div>
+          </div>
           <div className="flex items-center justify-between mb-8">
             <button
               onClick={onClose}
@@ -330,242 +575,35 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                 onChange={handleImportJSON}
                 className="hidden"
               />
+              {currentStep > 1 && (
+                <button
+                  onClick={() => setCurrentStep(currentStep - 1 as 1 | 2 | 3)}
+                  className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                >
+                  Previous Step
+                </button>
+              )}
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className={`px-6 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium flex items-center ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Save className="w-5 h-5 mr-2" />
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? 'Saving...' : currentStep === 3 ? 'Save' : 'Save & Continue'}
               </button>
             </div>
           </div>
 
           <div className="space-y-6">
-            <div className="flex space-x-4 mb-8">
-              <button
-                onClick={() => setActiveTab('basic')}
-                className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'basic' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              >
-                Basic Info
-              </button>
-              <button
-                onClick={() => setActiveTab('questions')}
-                className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'questions' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              >
-                Questions
-              </button>
-              <button
-                onClick={() => setActiveTab('types')}
-                className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'types' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              >
-                Personality Types
-              </button>
-            </div>
-
-            {activeTab === 'basic' && (
-              <div className="space-y-6">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder="Enter quiz title"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder="Enter quiz description"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="slug" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Slug
-                  </label>
-                  <input
-                    type="text"
-                    id="slug"
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder="Enter URL slug"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Cover Image
-                  </label>
-                  <ImageUpload
-                      currentImage={quiz?.coverImageUrl}
-                      onImageChange={setCoverImageFile}
-                      onImageRemove={() => setCoverImageFile(null)}
-                      label="Upload cover image"
-                    />
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'questions' && (
-              <div className="space-y-8">
-                {questions.map((question, index) => (
-                  <div key={question.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1 mr-4">
-                        <input
-                          type="text"
-                          value={question.text}
-                          onChange={(e) => updateQuestion(question.id, e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder={`Question ${index + 1}`}
-                        />
-                      </div>
-                      <button
-                        onClick={() => removeQuestion(question.id)}
-                        className="text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    <div className="mb-4">
-                      <ImageUpload
-                        currentImage={question.imageUrl}
-                        onImageChange={(file) => updateQuestionImage(question.id, file)}
-                        onImageRemove={() => removeQuestionImage(question.id)}
-                        label="Question image"
-                      />
-                    </div>
-
-                    <div className="space-y-4">
-                      {question.answers.map((answer, answerIndex) => (
-                        <div key={answer.id} className="flex items-center space-x-4">
-                          <input
-                            type="text"
-                            value={answer.text}
-                            onChange={(e) => updateAnswer(question.id, answer.id, { text: e.target.value })}
-                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                            placeholder={`Answer ${answerIndex + 1}`}
-                          />
-                          <select
-                            value={answer.personalityType}
-                            onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
-                            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          >
-                            <option value="">Select Type</option>
-                            {personalityTypes.map((type) => (
-                              <option key={type.id} value={type.id}>
-                                {type.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => removeAnswer(question.id, answer.id)}
-                            className="text-red-500 hover:text-red-600"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        onClick={() => addAnswer(question.id)}
-                        className="flex items-center text-purple-600 hover:text-purple-700"
-                      >
-                        <Plus className="w-5 h-5 mr-2" />
-                        Add Answer
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={addQuestion}
-                  className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:text-purple-600 hover:border-purple-600 dark:hover:text-purple-400 dark:hover:border-purple-400 flex items-center justify-center"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add Question
-                </button>
-              </div>
-            )}
-
-            {activeTab === 'types' && (
-              <div className="space-y-6">
-                {personalityTypes.map((type) => (
-                  <div key={type.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1 space-y-4 mr-4">
-                        <input
-                          type="text"
-                          value={type.name}
-                          onChange={(e) => updatePersonalityType(type.id, { name: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder="Type name"
-                        />
-                        <textarea
-                          value={type.description}
-                          onChange={(e) => updatePersonalityType(type.id, { description: e.target.value })}
-                          rows={3}
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder="Type description"
-                        />
-                      </div>
-                      <button
-                        onClick={() => removePersonalityType(type.id)}
-                        className="text-red-500 hover:text-red-600"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    <div className="mb-4">
-                      <ImageUpload
-                        currentImage={type.resultImageUrl}
-                        onImageChange={(file) => updatePersonalityTypeImage(type.id, file)}
-                        onImageRemove={() => removePersonalityTypeImage(type.id)}
-                        label="Result image"
-                      />
-                    </div>
-
-                    <div className="flex space-x-4">
-                      <input
-                        type="color"
-                        value={type.color}
-                        onChange={(e) => updatePersonalityType(type.id, { color: e.target.value })}
-                        className="h-10 w-20 rounded cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={addPersonalityType}
-                  className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:text-purple-600 hover:border-purple-600 dark:hover:text-purple-400 dark:hover:border-purple-400 flex items-center justify-center"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add Personality Type
-                </button>
-              </div>
-            )}
+            {renderStepContent()}
           </div>
         </div>
       </div>
       <SaveToast 
-        show={showSaveSuccess}
-        onClose={() => setShowSaveSuccess(false)}
+        show={showToast}
+        message={toastMessage}
+        onClose={() => setShowToast(false)}
       />
-    </>
+    </div>
   );
 }
