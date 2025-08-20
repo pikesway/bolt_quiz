@@ -106,9 +106,10 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     }
 
     setSaving(true);
+    setShowSaveSuccess(false); // Reset save success state before saving
     
     try {
-      const result = await onSave({
+      const quizData = {
         title,
         description,
         coverImageUrl: quiz?.coverImageUrl,
@@ -116,14 +117,20 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         personalityTypes,
         isPublished,
         slug
-      }, coverImageFile || undefined);
+      };
+      
+      console.log('Saving quiz...', quiz ? 'Update' : 'Create');
+      const result = await onSave(quizData, coverImageFile || undefined);
       
       if (result.error) {
+        console.error('Save error:', result.error);
         alert(`Failed to save quiz: ${result.error.message}`);
       } else {
-        setShowSaveSuccess(true);
+        console.log('Save successful');
+        setShowSaveSuccess(true); // Show success modal only after successful save
       }
     } catch (error) {
+      console.error('Save error:', error);
       alert(`Failed to save quiz: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`);
     } finally {
       setSaving(false);
