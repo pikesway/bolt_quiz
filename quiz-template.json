@@ -1,0 +1,63 @@
+{
+  "title": "What Type of [Topic] Are You?",
+  "description": "Discover your unique [topic] style through this engaging personality quiz! Answer questions about your preferences and behaviors to reveal which [topic] type best matches your personality.",
+  "slug": "what-type-of-[topic]-are-you",
+  "personalityTypes": [
+    {
+      "name": "[Type 1 Name]",
+      "description": "[Detailed description of Type 1, 2-3 sentences explaining key characteristics and strengths]",
+      "color": "#3B82F6",
+      "icon": "Star"
+    },
+    {
+      "name": "[Type 2 Name]",
+      "description": "[Detailed description of Type 2, 2-3 sentences explaining key characteristics and strengths]",
+      "color": "#8B5CF6",
+      "icon": "Heart"
+    },
+    {
+      "name": "[Type 3 Name]",
+      "description": "[Detailed description of Type 3, 2-3 sentences explaining key characteristics and strengths]",
+      "color": "#14B8A6",
+      "icon": "Lightbulb"
+    },
+    {
+      "name": "[Type 4 Name]",
+      "description": "[Detailed description of Type 4, 2-3 sentences explaining key characteristics and strengths]",
+      "color": "#F59E0B",
+      "icon": "Zap"
+    }
+  ],
+  "questions": [
+    {
+      "text": "[Question 1 text that reveals personality traits related to the topic]?",
+      "orderIndex": 0,
+      "answers": [
+        {
+          "text": "[Answer that aligns with Type 1]",
+          "personalityType": "[Type 1 Name]",
+          "weight": 1,
+          "orderIndex": 0
+        },
+        {
+          "text": "[Answer that aligns with Type 2]",
+          "personalityType": "[Type 2 Name]",
+          "weight": 1,
+          "orderIndex": 1
+        },
+        {
+          "text": "[Answer that aligns with Type 3]",
+          "personalityType": "[Type 3 Name]",
+          "weight": 1,
+          "orderIndex": 2
+        },
+        {
+          "text": "[Answer that aligns with Type 4]",
+          "personalityType": "[Type 4 Name]",
+          "weight": 1,
+          "orderIndex": 3
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Quiz, Question, Answer, PersonalityType } from '../types/quiz';
 import { X, Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
 import { ImageUpload } from './ImageUpload';
@@ -23,6 +23,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   );
   const [activeTab, setActiveTab] = useState<'basic' | 'questions' | 'types'>('basic');
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addQuestion = () => {
     const newQuestion: Question = {
@@ -174,6 +175,62 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     }
   };
 
+  const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importedQuiz = JSON.parse(text);
+
+      // Validate imported data structure
+      if (!importedQuiz.title || !importedQuiz.description || 
+          !Array.isArray(importedQuiz.questions) || !Array.isArray(importedQuiz.personalityTypes)) {
+        throw new Error('Invalid quiz format');
+      }
+
+      // Generate IDs for imported data
+      const personalityTypes = importedQuiz.personalityTypes.map((type: Omit<PersonalityType, 'id'>) => ({
+        ...type,
+        id: Math.random().toString(36).substr(2, 9)
+      }));
+
+      const questions = importedQuiz.questions.map((q: Omit<Question, 'id'>, index: number) => ({
+        ...q,
+        id: Math.random().toString(36).substr(2, 9),
+        orderIndex: index,
+        answers: q.answers.map((a: Omit<Answer, 'id'>, aIndex: number) => {
+          const matchingType = personalityTypes.find((pt: PersonalityType) => pt.name === a.personalityType);
+          if (!matchingType) {
+            throw new Error(`Personality type ${a.personalityType} not found in the quiz data`);
+          }
+          return {
+            ...a,
+            id: Math.random().toString(36).substr(2, 9),
+            orderIndex: aIndex,
+            personalityType: matchingType.name // Use name instead of id for mapping
+          };
+        })
+      }));
+
+      // Update state
+      setTitle(importedQuiz.title);
+      setDescription(importedQuiz.description);
+      setSlug(importedQuiz.slug || '');
+      setPersonalityTypes(personalityTypes);
+      setQuestions(questions);
+      setActiveTab('basic');
+    } catch (error) {
+      alert('Error importing quiz: ' + (error instanceof Error ? error.message : 'Invalid file format'));
+      console.error('Import error:', error);
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="bg-white border-b border-gray-200 px-6 py-4">
@@ -188,14 +245,29 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
             <h1 className="text-xl font-semibold">{quiz ? 'Edit Quiz' : 'Create New Quiz'}</h1>
           </div>
           
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save Quiz'}
-          </button>
+          <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportJSON}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Import JSON
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Saving...' : 'Save Quiz'}
+            </button>
+          </div>
         </div>
       </div>
 

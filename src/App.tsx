@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Quiz, PersonalityType } from './types/quiz';
 import { useQuizzes } from './hooks/useQuizzes';
 import { useAuth } from './hooks/useAuth';
@@ -12,14 +12,14 @@ type AppView = 'dashboard' | 'builder' | 'taker' | 'result';
 
 function AppContent() {
   const { loading: authLoading } = useAuth();
+  const { createQuiz, loading: quizLoading } = useQuizzes();
+
   const [currentView, setCurrentView] = useState<AppView>('dashboard');
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
   const [quizResult, setQuizResult] = useState<PersonalityType | null>(null);
-  
-  const { createQuiz, updateQuiz } = useQuizzes();
 
-  if (authLoading) {
+  if (authLoading || quizLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
@@ -42,13 +42,25 @@ function AppContent() {
     setCurrentView('taker');
   };
 
-  const handleSaveQuiz = (quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
-    if (editingQuiz) {
-      updateQuiz(editingQuiz.id, quizData, coverImageFile);
-    } else {
-      createQuiz(quizData, coverImageFile);
+  const handleSaveQuiz = async (quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
+    try {
+      if (editingQuiz) {
+        const { error } = await useQuizzes().updateQuiz(editingQuiz.id, quizData, coverImageFile);
+        if (error) {
+          console.error('Error updating quiz:', error);
+          return;
+        }
+      } else {
+        const { error } = await createQuiz(quizData as Quiz, coverImageFile);
+        if (error) {
+          console.error('Error creating quiz:', error);
+          return;
+        }
+      }
+      setCurrentView('dashboard');
+    } catch (error) {
+      console.error('Error saving quiz:', error);
     }
-    setCurrentView('dashboard');
   };
 
   const handleQuizComplete = (result: PersonalityType) => {

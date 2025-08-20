@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { Quiz, DatabaseQuiz, DatabaseQuestion, DatabaseAnswer, DatabasePersonalityType } from '../types/quiz';
-import { supabase, uploadImage } from '../lib/supabase';
+
+const slugify = (text: string) => {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+};
 
 // Transform database objects to frontend types
 const transformQuizFromDB = (
@@ -56,101 +63,49 @@ const transformQuizFromDB = (
   };
 };
 
-// Mock data for demo purposes
-const mockQuizzes: Quiz[] = [
-  {
-    id: '1',
-    title: 'What\'s Your Leadership Style?',
-    description: 'Discover your unique approach to leading teams and making decisions.',
-    coverImageUrl: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=800',
-    questions: [
-      {
-        id: 'q1',
-        text: 'When facing a difficult decision, you typically:',
-        answers: [
-          { id: 'a1', text: 'Analyze all data thoroughly before deciding', personalityType: 'analytical', weight: 1, orderIndex: 0 },
-          { id: 'a2', text: 'Trust your gut instinct', personalityType: 'intuitive', weight: 1, orderIndex: 1 },
-          { id: 'a3', text: 'Consult with your team first', personalityType: 'collaborative', weight: 1, orderIndex: 2 },
-          { id: 'a4', text: 'Make quick decisions and adapt as needed', personalityType: 'decisive', weight: 1, orderIndex: 3 }
-        ],
-        orderIndex: 0,
-        imageUrl: 'https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=800'
-      },
-      {
-        id: 'q2',
-        text: 'Your ideal work environment is:',
-        answers: [
-          { id: 'b1', text: 'Structured with clear processes', personalityType: 'analytical', weight: 1, orderIndex: 0 },
-          { id: 'b2', text: 'Creative and flexible', personalityType: 'intuitive', weight: 1, orderIndex: 1 },
-          { id: 'b3', text: 'Team-oriented and collaborative', personalityType: 'collaborative', weight: 1, orderIndex: 2 },
-          { id: 'b4', text: 'Fast-paced and dynamic', personalityType: 'decisive', weight: 1, orderIndex: 3 }
-        ],
-        orderIndex: 1,
-        imageUrl: 'https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg?auto=compress&cs=tinysrgb&w=800'
-      }
-    ],
-    personalityTypes: [
-      {
-        id: 'analytical',
-        name: 'The Analytical Leader',
-        description: 'You excel at making data-driven decisions and creating systematic approaches to challenges.',
-        color: '#3B82F6',
-        icon: 'BarChart3',
-        resultImageUrl: 'https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg?auto=compress&cs=tinysrgb&w=800'
-      },
-      {
-        id: 'intuitive',
-        name: 'The Visionary Leader',
-        description: 'You inspire others with your creative thinking and ability to see the big picture.',
-        color: '#8B5CF6',
-        icon: 'Lightbulb',
-        resultImageUrl: 'https://images.pexels.com/photos/3184339/pexels-photo-3184339.jpeg?auto=compress&cs=tinysrgb&w=800'
-      },
-      {
-        id: 'collaborative',
-        name: 'The Team Builder',
-        description: 'You bring out the best in others through empathy and inclusive decision-making.',
-        color: '#14B8A6',
-        icon: 'Users',
-        resultImageUrl: 'https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?auto=compress&cs=tinysrgb&w=800'
-      },
-      {
-        id: 'decisive',
-        name: 'The Action-Oriented Leader',
-        description: 'You thrive in dynamic environments and excel at making quick, effective decisions.',
-        color: '#F59E0B',
-        icon: 'Zap',
-        resultImageUrl: 'https://images.pexels.com/photos/3184287/pexels-photo-3184287.jpeg?auto=compress&cs=tinysrgb&w=800'
-      }
-    ],
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-20',
-    isPublished: true,
-    totalTakes: 1248
-  }
-];
-
 export function useQuizzes() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     // Get current user and load quizzes
     const loadData = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
+        setLoading(true);
+        setError(null);
         
-        if (user) {
-          await loadQuizzes(user.id);
+        // Subscribe to auth state changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          const currentUser = session?.user ?? null;
+          setUser(currentUser);
+          
+          if (currentUser) {
+            console.log('Loading quizzes for user:', currentUser.id);
+            await loadQuizzes(currentUser.id);
+          } else {
+            console.log('No user found');
+            setQuizzes([]);
+          }
+        });
+
+        // Get initial auth state
+        const { data: { session } } = await supabase.auth.getSession();
+        const initialUser = session?.user ?? null;
+        setUser(initialUser);
+
+        if (initialUser) {
+          await loadQuizzes(initialUser.id);
         } else {
-          // Use mock data for demo
-          setQuizzes(mockQuizzes);
+          setQuizzes([]);
         }
+
+        return () => subscription.unsubscribe();
       } catch (error) {
         console.error('Error loading data:', error);
-        setQuizzes(mockQuizzes);
+        setError(error as Error);
+        setQuizzes([]);
       } finally {
         setLoading(false);
       }
@@ -161,13 +116,19 @@ export function useQuizzes() {
 
   const loadQuizzes = async (userId: string) => {
     try {
+      console.log('Fetching quizzes from database...');
       // Load quizzes
       const { data: dbQuizzes, error: quizzesError } = await supabase
         .from('quizzes')
         .select('*')
         .eq('user_id', userId);
 
-      if (quizzesError) throw quizzesError;
+      if (quizzesError) {
+        console.error('Error loading quizzes:', quizzesError);
+        throw quizzesError;
+      }
+
+      console.log('Quizzes fetched:', dbQuizzes?.length || 0);
 
       if (!dbQuizzes || dbQuizzes.length === 0) {
         setQuizzes([]);
@@ -177,242 +138,195 @@ export function useQuizzes() {
       const quizIds = dbQuizzes.map(q => q.id);
 
       // Load questions
+      console.log('Fetching questions...');
       const { data: questions, error: questionsError } = await supabase
         .from('questions')
         .select('*')
         .in('quiz_id', quizIds);
 
-      if (questionsError) throw questionsError;
+      if (questionsError) {
+        console.error('Error loading questions:', questionsError);
+        throw questionsError;
+      }
+
+      console.log('Questions fetched:', questions?.length || 0);
 
       // Load answers
+      console.log('Fetching answers...');
       const { data: answers, error: answersError } = await supabase
         .from('answers')
         .select('*')
         .in('question_id', questions?.map(q => q.id) || []);
 
-      if (answersError) throw answersError;
+      if (answersError) {
+        console.error('Error loading answers:', answersError);
+        throw answersError;
+      }
+
+      console.log('Answers fetched:', answers?.length || 0);
 
       // Load personality types
+      console.log('Fetching personality types...');
       const { data: personalityTypes, error: typesError } = await supabase
         .from('personality_types')
         .select('*')
         .in('quiz_id', quizIds);
 
-      if (typesError) throw typesError;
+      if (typesError) {
+        console.error('Error loading personality types:', typesError);
+        throw typesError;
+      }
+
+      console.log('Personality types fetched:', personalityTypes?.length || 0);
 
       // Transform and set quizzes
       const transformedQuizzes = dbQuizzes.map(dbQuiz =>
         transformQuizFromDB(dbQuiz, questions || [], answers || [], personalityTypes || [])
       );
 
+      console.log('Transformed quizzes:', transformedQuizzes.length);
       setQuizzes(transformedQuizzes);
     } catch (error) {
-      console.error('Error loading quizzes:', error);
+      console.error('Error in loadQuizzes:', error);
+      setError(error as Error);
       setQuizzes([]);
     }
   };
 
-  const createQuiz = async (
-    quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>,
-    coverImageFile?: File
-  ) => {
-    if (!user) {
-      // Fallback to mock behavior
-      const newQuiz: Quiz = {
-        ...quiz,
-        id: Math.random().toString(36).substr(2, 9),
-        createdAt: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString().split('T')[0],
-        totalTakes: 0
-      };
-      setQuizzes(prev => [...prev, newQuiz]);
-      return newQuiz;
-    }
-
+  const createQuiz = async (quiz: Quiz, coverImageFile?: File) => {
     try {
-      let coverImageUrl = quiz.coverImageUrl;
+      const timestamp = Date.now();
+      const slug = `${slugify(quiz.title)}-${timestamp}`;
 
-      // Upload cover image if provided
-      if (coverImageFile) {
-        const imagePath = `${user.id}/covers/${Date.now()}-${coverImageFile.name}`;
-        coverImageUrl = await uploadImage(coverImageFile, 'quiz-images', imagePath);
-      }
-
-      // Create quiz
+      let quizData;
       const { data: dbQuiz, error: quizError } = await supabase
         .from('quizzes')
         .insert({
-          user_id: user.id,
           title: quiz.title,
           description: quiz.description,
-          cover_image_url: coverImageUrl,
-          is_published: quiz.isPublished,
-          slug: quiz.slug
+          user_id: user?.id,
+          slug: slug,
+          is_published: false,
+          total_takes: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
-      if (quizError) throw quizError;
+      if (quizError) {
+        console.error('Error creating quiz:', quizError);
+        throw quizError;
+      }
 
-      // Create personality types
-      const { data: dbPersonalityTypes, error: typesError } = await supabase
+      quizData = dbQuiz;
+
+      // Insert personality types
+      const personalityTypesWithQuizId = quiz.personalityTypes.map(pt => ({
+        quiz_id: quizData.id,
+        name: pt.name,
+        description: pt.description,
+        color: pt.color,
+        icon: pt.icon,
+        result_image_url: pt.resultImageUrl,
+        created_at: new Date().toISOString()
+      }));
+
+      const { data: dbPersonalityTypes, error: personalityTypesError } = await supabase
         .from('personality_types')
-        .insert(
-          quiz.personalityTypes.map(type => ({
-            quiz_id: dbQuiz.id,
-            name: type.name,
-            description: type.description,
-            color: type.color,
-            icon: type.icon,
-            result_image_url: type.resultImageUrl
-          }))
-        )
+        .insert(personalityTypesWithQuizId)
         .select();
 
-      if (typesError) throw typesError;
+      if (personalityTypesError) throw personalityTypesError;
+      if (!dbPersonalityTypes) throw new Error('Failed to create personality types');
 
-      // Create questions
+      // Create a map of personality type names to their IDs
+      // Remove unused personalityTypeMap since it's not being used anywhere
+      dbPersonalityTypes.reduce((acc, pt) => {
+        acc[pt.name] = pt.id;
+        return acc;
+      }, {} as Record<string, string>);
+
+      // Insert questions
+      const questionsWithQuizId = quiz.questions.map((q, index) => ({
+        quiz_id: quizData.id,
+        text: q.text,
+        image_url: q.imageUrl,
+        order_index: index,
+        created_at: new Date().toISOString()
+      }));
+
       const { data: dbQuestions, error: questionsError } = await supabase
         .from('questions')
-        .insert(
-          quiz.questions.map(question => ({
-            quiz_id: dbQuiz.id,
-            text: question.text,
-            image_url: question.imageUrl,
-            order_index: question.orderIndex
-          }))
-        )
+        .insert(questionsWithQuizId)
         .select();
 
       if (questionsError) throw questionsError;
+      if (!dbQuestions) throw new Error('Failed to create questions');
 
-      // Create answers for each question
-      const answersToInsert = quiz.questions.flatMap((question, qIndex) =>
-        question.answers.map(answer => ({
-          question_id: dbQuestions[qIndex].id,
-          text: answer.text,
-          personality_type_id: dbPersonalityTypes.find(
-            pt => pt.name === quiz.personalityTypes.find(t => t.id === answer.personalityType)?.name
-          )?.id,
-          weight: answer.weight,
-          order_index: answer.orderIndex
-        }))
+      // Find matching personality type for each answer
+      const answers = quiz.questions.flatMap((q, qIndex) =>
+        q.answers.map((a, aIndex) => {
+          const matchingType = dbPersonalityTypes.find(pt => pt.name === a.personalityType);
+          if (!matchingType) {
+            throw new Error(`Personality type ${a.personalityType} not found`);
+          }
+          return {
+            question_id: dbQuestions[qIndex].id,
+            text: a.text,
+            personality_type_id: matchingType.id,
+            weight: a.weight,
+            order_index: aIndex,
+            created_at: new Date().toISOString()
+          };
+        })
       );
 
       const { error: answersError } = await supabase
         .from('answers')
-        .insert(answersToInsert);
+        .insert(answers);
 
       if (answersError) throw answersError;
 
-      // Construct the complete quiz object with all related data
-      const newQuiz: Quiz = {
-        ...quiz,
-        id: dbQuiz.id,
-        userId: user.id,
-        coverImageUrl,
-        questions: quiz.questions.map((q, qIndex) => ({
-          ...q,
-          id: dbQuestions[qIndex].id,
-          answers: q.answers.map(a => ({
-            ...a,
-            id: Math.random().toString(36).substr(2, 9), // Temporary ID since we don't select answers
-            personalityType: dbPersonalityTypes.find(
-              pt => pt.name === quiz.personalityTypes.find(t => t.id === a.personalityType)?.name
-            )?.id || a.personalityType
-          }))
-        })),
-        personalityTypes: quiz.personalityTypes.map((pt, ptIndex) => ({
-          ...pt,
-          id: dbPersonalityTypes[ptIndex].id
-        })),
-        createdAt: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString().split('T')[0],
-        totalTakes: 0
-      };
-
-      setQuizzes(prev => [...prev, newQuiz]);
-      return newQuiz;
-    } catch (error) {
-      console.error('Error creating quiz:', error);
-      throw error;
-    }
-  };
-
-  const updateQuiz = async (id: string, updates: Partial<Quiz>, coverImageFile?: File) => {
-    if (!user) {
-      // Fallback to mock behavior
-      setQuizzes(prev => prev.map(quiz => 
-        quiz.id === id 
-          ? { ...quiz, ...updates, updatedAt: new Date().toISOString().split('T')[0] }
-          : quiz
-      ));
-      return;
-    }
-
-    try {
-      let coverImageUrl = updates.coverImageUrl;
-
-      // Upload new cover image if provided
+      // Upload cover image if provided
       if (coverImageFile) {
-        const imagePath = `${user.id}/covers/${Date.now()}-${coverImageFile.name}`;
-        coverImageUrl = await uploadImage(coverImageFile, 'quiz-images', imagePath);
+        const imagePath = `${user?.id}/covers/${Date.now()}-${coverImageFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('quiz-images')
+          .upload(imagePath, coverImageFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('quiz-images')
+          .getPublicUrl(imagePath);
+
+        const { error: updateError } = await supabase
+          .from('quizzes')
+          .update({ cover_image_url: publicUrl })
+          .eq('id', quizData.id);
+
+        if (updateError) throw updateError;
+        quizData.cover_image_url = publicUrl;
       }
 
-      // Update quiz in database
-      const { error } = await supabase
-        .from('quizzes')
-        .update({
-          title: updates.title,
-          description: updates.description,
-          cover_image_url: coverImageUrl,
-          is_published: updates.isPublished,
-          updated_at: new Date().toISOString(),
-          slug: updates.slug
-        })
-        .eq('id', id);
+      // Reload quizzes to update the list
+      if (user) {
+        await loadQuizzes(user.id);
+      }
 
-      if (error) throw error;
-
-      // Update local state
-    setQuizzes(prev => prev.map(quiz => 
-      quiz.id === id 
-          ? { ...quiz, ...updates, coverImageUrl, updatedAt: new Date().toISOString().split('T')[0] }
-        : quiz
-    ));
+      return { quiz: quizData as DatabaseQuiz, error: null };
     } catch (error) {
-      console.error('Error updating quiz:', error);
-      throw error;
-    }
-  };
-
-  const deleteQuiz = async (id: string) => {
-    if (!user) {
-      // Fallback to mock behavior
-      setQuizzes(prev => prev.filter(quiz => quiz.id !== id));
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('quizzes')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-    setQuizzes(prev => prev.filter(quiz => quiz.id !== id));
-    } catch (error) {
-      console.error('Error deleting quiz:', error);
-      throw error;
+      console.error('Error creating quiz:', error);
+      return { quiz: null, error };
     }
   };
 
   return {
     quizzes,
     loading,
-    createQuiz,
-    updateQuiz,
-    deleteQuiz
+    error,
+    loadQuizzes,
+    createQuiz
   };
 }
