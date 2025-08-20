@@ -45,7 +45,7 @@ function AppContent() {
   const handleSaveQuiz = async (quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
     try {
       if (editingQuiz) {
-        const { error } = await useQuizzes().updateQuiz(editingQuiz.id, quizData, coverImageFile);
+        const { error } = await updateQuiz(editingQuiz.id, quizData, coverImageFile);
         if (error) {
           console.error('Error updating quiz:', error);
           return;
@@ -132,3 +132,7 @@ function App() {
 }
 
 export default App;
+
+function updateQuiz(_id: string, _quizData: Omit<Quiz, "id" | "createdAt" | "updatedAt" | "totalTakes">, _coverImageFile: File | undefined): { error: any; } | PromiseLike<{ error: any; }> {
+  throw new Error('Function not implemented.');
+}
