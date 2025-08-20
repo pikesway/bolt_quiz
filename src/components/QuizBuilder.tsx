@@ -85,8 +85,6 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         if (!quizId && result.quizId) {
           setQuizId(result.quizId);
         }
-        
-        setCurrentStep(2);
       }
       
       // Step 2: Save personality types
@@ -108,8 +106,6 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         
         const result = await onSave(typesData, undefined);
         if (result.error) throw result.error;
-        
-        setCurrentStep(3);
       }
       
       // Step 3: Save questions and answers
@@ -146,8 +142,13 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         console.log('Quiz creation completed successfully');
       }
       
-      // Show success toast
-      setToastMessage('Progress saved!');
+      // Show success toast and update step
+      if (currentStep < 3) {
+        setToastMessage('Progress saved! Moving to next step...');
+        setCurrentStep((currentStep + 1) as 1 | 2 | 3);
+      } else {
+        setToastMessage('Quiz saved successfully!');
+      }
       setShowToast(true);
       toastTimer = setTimeout(() => setShowToast(false), 3000);
       
@@ -384,7 +385,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                 placeholder="Enter quiz title"
               />
             </div>
@@ -394,7 +395,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                 rows={3}
                 placeholder="Enter quiz description"
               />
@@ -406,7 +407,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                 type="text"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                 placeholder="Enter URL slug"
               />
             </div>
@@ -431,13 +432,13 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                     type="text"
                     value={type.name}
                     onChange={(e) => updatePersonalityType(type.id, { name: e.target.value })}
-                    className="w-full px-4 py-2 border rounded"
+                    className="w-full px-4 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                     placeholder="Type name"
                   />
                   <textarea
                     value={type.description}
                     onChange={(e) => updatePersonalityType(type.id, { description: e.target.value })}
-                    className="w-full px-4 py-2 border rounded"
+                    className="w-full px-4 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                     placeholder="Type description"
                   />
                 </div>
@@ -462,7 +463,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                   type="text"
                   value={question.text}
                   onChange={(e) => updateQuestion(question.id, e.target.value)}
-                  className="w-full px-4 py-2 border rounded"
+                  className="w-full px-4 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                   placeholder="Question text"
                 />
                 {question.answers.map((answer) => (
@@ -471,13 +472,13 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                       type="text"
                       value={answer.text}
                       onChange={(e) => updateAnswer(question.id, answer.id, { text: e.target.value })}
-                      className="flex-1 px-4 py-2 border rounded"
+                      className="flex-1 px-4 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                       placeholder="Answer text"
                     />
                     <select
                       value={answer.personalityType}
                       onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
-                      className="px-4 py-2 border rounded"
+                      className="px-4 py-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-gray-900 dark:text-white"
                     >
                       <option value="">Select Type</option>
                       {personalityTypes.map((type) => (

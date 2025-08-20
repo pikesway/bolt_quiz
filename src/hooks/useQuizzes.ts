@@ -84,7 +84,7 @@ export function useQuizzes() {
       // Update local state
       setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== quizId));
 
-      return { error: null, quizId: quizData.id };
+      return { error: null, quizId };
     } catch (error) {
       console.error('Error deleting quiz:', error);
       setError(error as Error);
@@ -418,7 +418,7 @@ export function useQuizzes() {
       // Update the quizzes state directly
       setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
 
-      return { error: null, quizId };
+      return { error: null, quizId: quizData.id };
     } catch (error) {
       console.error('Error creating quiz:', error);
       setError(error as Error);
