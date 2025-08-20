@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 
 interface QuizBuilderProps {
   quiz?: Quiz;
-  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => void;
+  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => Promise<{ error?: Error }>;
   onClose: () => void;
 }
 
@@ -21,8 +21,10 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   const [personalityTypes, setPersonalityTypes] = useState<PersonalityType[]>(
     quiz?.personalityTypes || []
   );
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'questions' | 'types'>('basic');
   const [saving, setSaving] = useState(false);
+  const [isPublished, setIsPublished] = useState(quiz?.isPublished || false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addQuestion = () => {
@@ -47,9 +49,9 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     const newAnswer: Answer = {
       id: Math.random().toString(36).substr(2, 9),
       text: '',
-      personalityType: personalityTypes[0]?.id || '',
+      personalityType: '',
       weight: 1,
-      orderIndex: 0
+      orderIndex: questions.find(q => q.id === questionId)?.answers.length || 0
     };
     
     setQuestions(questions.map(q => 
@@ -145,7 +147,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     ));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
       alert('Please fill in all required fields');
       return;
@@ -158,18 +160,36 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
       return;
     }
 
+    // Validate that all answers have a personality type selected
+    const invalidQuestion = questions.find(q => 
+      q.answers.some(a => !a.personalityType)
+    );
+    if (invalidQuestion) {
+      alert('Please select a personality type for all answers');
+      return;
+    }
+
     setSaving(true);
     
     try {
-      onSave({
+      const result = await onSave({
         title,
         description,
         coverImageUrl: quiz?.coverImageUrl,
         questions,
         personalityTypes,
-        isPublished: false,
+        isPublished,
         slug
       }, coverImageFile || undefined);
+      
+      if (!result.error) {
+        setShowSaveSuccess(true);
+      } else {
+        alert('Failed to save quiz: ' + result.error.message);
+      }
+    } catch (error) {
+      console.error('Error saving quiz:', error);
+      alert('Failed to save quiz. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -208,7 +228,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
             ...a,
             id: Math.random().toString(36).substr(2, 9),
             orderIndex: aIndex,
-            personalityType: matchingType.name // Use name instead of id for mapping
+            personalityType: matchingType.id // Use id for mapping
           };
         })
       }));
@@ -245,28 +265,44 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
             <h1 className="text-xl font-semibold">{quiz ? 'Edit Quiz' : 'Create New Quiz'}</h1>
           </div>
           
-          <div className="flex items-center gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImportJSON}
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Import JSON
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save Quiz'}
-            </button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPublished}
+                  onChange={(e) => setIsPublished(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300">
+                  {isPublished ? 'Published' : 'Draft'}
+                </span>
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Import JSON
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving...' : 'Save Quiz'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -276,8 +312,8 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
           <nav className="flex space-x-8">
             {[
               { id: 'basic', label: 'Basic Info' },
-              { id: 'questions', label: 'Questions' },
-              { id: 'types', label: 'Personality Types' }
+              { id: 'types', label: 'Personality Types' },
+              { id: 'questions', label: 'Questions' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -409,6 +445,7 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
                         onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
                         className="px-2 py-1 border border-gray-300 rounded text-sm"
                       >
+                        <option value="">Select type...</option>
                         {personalityTypes.map((type) => (
                           <option key={type.id} value={type.id}>
                             {type.name}
@@ -522,6 +559,39 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
           </div>
         )}
       </div>
+
+      {showSaveSuccess && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-sm w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                <Save className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 text-center">Quiz Saved Successfully!</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
+              Your quiz has been saved. What would you like to do next?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowSaveSuccess(false);
+                  onClose();
+                }}
+                className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
+              >
+                Save & Close Editor
+              </button>
+              <button
+                onClick={() => setShowSaveSuccess(false)}
+                className="w-full px-4 py-2.5 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors font-medium"
+              >
+                Save & Continue Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

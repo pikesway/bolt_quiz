@@ -19,7 +19,8 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
   const { quizzes, loading, error, loadQuizzes } = useQuizzes();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  if (loading) {
+  // Only show loading state when quizzes are being loaded
+  if (loading && !error) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <Header onCreateQuiz={onCreateQuiz} onAuthClick={() => setShowAuthModal(true)} />
@@ -42,7 +43,7 @@ export function Dashboard({ onCreateQuiz, onEditQuiz, onTakeQuiz }: DashboardPro
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Error Loading Quizzes</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">{error.message}</p>
             <button
-              onClick={() => loadQuizzes(user?.id)}
+              onClick={() => user && loadQuizzes(user.id)}
               className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
             >
               Try Again

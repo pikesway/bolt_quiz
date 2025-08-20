@@ -69,15 +69,55 @@ export function useQuizzes() {
   const [error, setError] = useState<Error | null>(null);
   const [user, setUser] = useState<any>(null);
 
+  const deleteQuiz = async (quizId: string) => {
+    try {
+      setError(null);
+
+      // Delete quiz and related data will be cascade deleted due to foreign key constraints
+      const { error: deleteError } = await supabase
+        .from('quizzes')
+        .delete()
+        .eq('id', quizId);
+
+      if (deleteError) throw deleteError;
+
+      // Update local state
+      setQuizzes(prevQuizzes => prevQuizzes.filter(quiz => quiz.id !== quizId));
+
+      return { error: null };
+    } catch (error) {
+      console.error('Error deleting quiz:', error);
+      setError(error as Error);
+      return { error };
+    }
+  };
+
   useEffect(() => {
+    let isSubscribed = true;
+
     // Get current user and load quizzes
     const loadData = async () => {
       try {
+        if (!isSubscribed) return;
         setLoading(true);
         setError(null);
         
-        // Subscribe to auth state changes
+        // Get initial auth state first
+        const { data: { session } } = await supabase.auth.getSession();
+        const initialUser = session?.user ?? null;
+        if (!isSubscribed) return;
+        setUser(initialUser);
+
+        if (initialUser) {
+          await loadQuizzes(initialUser.id);
+        } else {
+          setQuizzes([]);
+          setLoading(false);
+        }
+        
+        // Subscribe to auth state changes after initial load
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (!isSubscribed) return;
           const currentUser = session?.user ?? null;
           setUser(currentUser);
           
@@ -87,35 +127,34 @@ export function useQuizzes() {
           } else {
             console.log('No user found');
             setQuizzes([]);
+            setLoading(false);
           }
         });
 
-        // Get initial auth state
-        const { data: { session } } = await supabase.auth.getSession();
-        const initialUser = session?.user ?? null;
-        setUser(initialUser);
-
-        if (initialUser) {
-          await loadQuizzes(initialUser.id);
-        } else {
-          setQuizzes([]);
-        }
-
-        return () => subscription.unsubscribe();
+        return () => {
+          subscription.unsubscribe();
+          isSubscribed = false;
+        };
       } catch (error) {
+        if (!isSubscribed) return;
         console.error('Error loading data:', error);
         setError(error as Error);
         setQuizzes([]);
-      } finally {
         setLoading(false);
       }
     };
 
     loadData();
+
+    return () => {
+      isSubscribed = false;
+    };
   }, []);
 
   const loadQuizzes = async (userId: string) => {
     try {
+      setLoading(true);
+      setError(null);
       console.log('Fetching quizzes from database...');
       // Load quizzes
       const { data: dbQuizzes, error: quizzesError } = await supabase
@@ -132,6 +171,7 @@ export function useQuizzes() {
 
       if (!dbQuizzes || dbQuizzes.length === 0) {
         setQuizzes([]);
+        setLoading(false);
         return;
       }
 
@@ -190,11 +230,16 @@ export function useQuizzes() {
       console.error('Error in loadQuizzes:', error);
       setError(error as Error);
       setQuizzes([]);
+    } finally {
+      setLoading(false);
     }
   };
 
   const createQuiz = async (quiz: Quiz, coverImageFile?: File) => {
     try {
+      // Don't set loading state here as it will trigger a re-render
+      // and cause the dashboard to show loading state unnecessarily
+      setError(null);
       const timestamp = Date.now();
       const slug = `${slugify(quiz.title)}-${timestamp}`;
 
@@ -310,15 +355,153 @@ export function useQuizzes() {
         quizData.cover_image_url = publicUrl;
       }
 
+      // Transform and return the newly created quiz without reloading all quizzes
+      const newQuiz = transformQuizFromDB(
+        quizData,
+        dbQuestions || [],
+        answers || [],
+        dbPersonalityTypes || []
+      );
+      
+      // Update the quizzes state directly
+      setQuizzes(prevQuizzes => [...prevQuizzes, newQuiz]);
+
+      return { error: null };
+    } catch (error) {
+      console.error('Error creating quiz:', error);
+      setError(error as Error);
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateQuiz = async (quizId: string, quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Update quiz basic info
+      const { error: quizError } = await supabase
+        .from('quizzes')
+        .update({
+          title: quizData.title,
+          description: quizData.description,
+          is_published: quizData.isPublished,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', quizId);
+
+      if (quizError) throw quizError;
+
+      // Update personality types
+      const { error: deleteTypesError } = await supabase
+        .from('personality_types')
+        .delete()
+        .eq('quiz_id', quizId);
+
+      if (deleteTypesError) throw deleteTypesError;
+
+      const personalityTypesWithQuizId = quizData.personalityTypes.map(pt => ({
+        quiz_id: quizId,
+        name: pt.name,
+        description: pt.description,
+        color: pt.color,
+        icon: pt.icon,
+        result_image_url: pt.resultImageUrl,
+        created_at: new Date().toISOString()
+      }));
+
+      const { data: dbPersonalityTypes, error: personalityTypesError } = await supabase
+        .from('personality_types')
+        .insert(personalityTypesWithQuizId)
+        .select();
+
+      if (personalityTypesError) throw personalityTypesError;
+      if (!dbPersonalityTypes) throw new Error('Failed to update personality types');
+
+      // Delete existing questions and answers
+      const { error: deleteQuestionsError } = await supabase
+        .from('questions')
+        .delete()
+        .eq('quiz_id', quizId);
+
+      if (deleteQuestionsError) throw deleteQuestionsError;
+
+      // Insert updated questions
+      const questionsWithQuizId = quizData.questions.map((q, index) => ({
+        quiz_id: quizId,
+        text: q.text,
+        image_url: q.imageUrl,
+        order_index: index,
+        created_at: new Date().toISOString()
+      }));
+
+      const { data: dbQuestions, error: questionsError } = await supabase
+        .from('questions')
+        .insert(questionsWithQuizId)
+        .select();
+
+      if (questionsError) throw questionsError;
+      if (!dbQuestions) throw new Error('Failed to update questions');
+
+      // Insert updated answers
+      const answers = quizData.questions.flatMap((q, qIndex) =>
+        q.answers.map((a, aIndex) => {
+          const matchingType = dbPersonalityTypes.find(pt => pt.name === a.personalityType);
+          if (!matchingType) {
+            throw new Error(`Personality type ${a.personalityType} not found`);
+          }
+          return {
+            question_id: dbQuestions[qIndex].id,
+            text: a.text,
+            personality_type_id: matchingType.id,
+            weight: a.weight,
+            order_index: aIndex,
+            created_at: new Date().toISOString()
+          };
+        })
+      );
+
+      const { error: answersError } = await supabase
+        .from('answers')
+        .insert(answers);
+
+      if (answersError) throw answersError;
+
+      // Handle cover image update if provided
+      if (coverImageFile) {
+        const imagePath = `${user?.id}/covers/${Date.now()}-${coverImageFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('quiz-images')
+          .upload(imagePath, coverImageFile);
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('quiz-images')
+          .getPublicUrl(imagePath);
+
+        const { error: updateError } = await supabase
+          .from('quizzes')
+          .update({ cover_image_url: publicUrl })
+          .eq('id', quizId);
+
+        if (updateError) throw updateError;
+      }
+
       // Reload quizzes to update the list
       if (user) {
         await loadQuizzes(user.id);
       }
 
-      return { quiz: quizData as DatabaseQuiz, error: null };
+      return { error: null };
     } catch (error) {
-      console.error('Error creating quiz:', error);
-      return { quiz: null, error };
+      console.error('Error updating quiz:', error);
+      setError(error as Error);
+      return { error };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -327,6 +510,8 @@ export function useQuizzes() {
     loading,
     error,
     loadQuizzes,
-    createQuiz
+    createQuiz,
+    updateQuiz,
+    deleteQuiz
   };
 }
