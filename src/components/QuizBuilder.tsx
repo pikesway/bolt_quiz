@@ -11,49 +11,21 @@ interface QuizBuilderProps {
   onClose: () => void;
 }
 
-const SaveSuccessDialog = ({ show, onClose, onCloseEditor }: { show: boolean; onClose: () => void; onCloseEditor: () => void }) => {
+const SaveToast = ({ show, onClose }: { show: boolean; onClose: () => void }) => {
   if (!show) return null;
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      onClick={onClose}
+      className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-slide-up z-50"
     >
-      <div 
-        className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-sm w-full mx-4 shadow-xl transform transition-all"
-        onClick={(e) => e.stopPropagation()}
+      <Save className="w-5 h-5" />
+      <span>Quiz saved successfully!</span>
+      <button 
+        onClick={onClose}
+        className="ml-4 hover:text-green-200"
       >
-        <div className="flex items-center justify-center mb-4">
-          <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-            <Save className="w-6 h-6 text-green-600 dark:text-green-400" />
-          </div>
-        </div>
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 text-center">Quiz Saved Successfully!</h3>
-        <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
-          Your quiz has been saved. What would you like to do next?
-        </p>
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => {
-              console.log('Closing editor...');
-              onClose();
-              onCloseEditor();
-            }}
-            className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
-          >
-            Save & Close Editor
-          </button>
-          <button
-            onClick={() => {
-              console.log('Continuing to edit...');
-              onClose();
-            }}
-            className="w-full px-4 py-2.5 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors font-medium"
-          >
-            Save & Continue Editing
-          </button>
-        </div>
-      </div>
+        <X className="w-4 h-4" />
+      </button>
     </div>
   );
 };
@@ -106,7 +78,6 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     }
 
     setSaving(true);
-    setShowSaveSuccess(false); // Reset save success state before saving
     
     try {
       const quizData = {
@@ -127,7 +98,9 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         alert(`Failed to save quiz: ${result.error.message}`);
       } else {
         console.log('Save successful');
-        setShowSaveSuccess(true); // Show success modal only after successful save
+        setShowSaveSuccess(true);
+        // Auto-hide toast after 3 seconds
+        setTimeout(() => setShowSaveSuccess(false), 3000);
       }
     } catch (error) {
       console.error('Save error:', error);
@@ -587,10 +560,9 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
           </div>
         </div>
       </div>
-      <SaveSuccessDialog 
+      <SaveToast 
         show={showSaveSuccess}
         onClose={() => setShowSaveSuccess(false)}
-        onCloseEditor={onClose}
       />
     </>
   );
