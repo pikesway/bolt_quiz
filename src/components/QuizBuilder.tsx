@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Quiz, Question, Answer, PersonalityType } from '../types/quiz';
 import { X, Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
 import { ImageUpload } from './ImageUpload';
@@ -10,6 +10,53 @@ interface QuizBuilderProps {
   onSave: (quiz: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => Promise<{ error?: Error }>;
   onClose: () => void;
 }
+
+const SaveSuccessDialog = ({ show, onClose, onCloseEditor }: { show: boolean; onClose: () => void; onCloseEditor: () => void }) => {
+  if (!show) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-sm w-full mx-4 shadow-xl transform transition-all"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-center mb-4">
+          <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+            <Save className="w-6 h-6 text-green-600 dark:text-green-400" />
+          </div>
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 text-center">Quiz Saved Successfully!</h3>
+        <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
+          Your quiz has been saved. What would you like to do next?
+        </p>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => {
+              console.log('Closing editor...');
+              onClose();
+              onCloseEditor();
+            }}
+            className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
+          >
+            Save & Close Editor
+          </button>
+          <button
+            onClick={() => {
+              console.log('Continuing to edit...');
+              onClose();
+            }}
+            className="w-full px-4 py-2.5 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors font-medium"
+          >
+            Save & Continue Editing
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   const { user } = useAuth();
@@ -26,6 +73,75 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   const [saving, setSaving] = useState(false);
   const [isPublished, setIsPublished] = useState(quiz?.isPublished || false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (showSaveSuccess) {
+        setShowSaveSuccess(false);
+      }
+    };
+  }, []);
+
+  const handleSave = async () => {
+    if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    // Validate slug format
+    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    if (!slugRegex.test(slug)) {
+      alert('Slug must contain only lowercase letters, numbers, and hyphens');
+      return;
+    }
+
+    // Validate that all answers have a personality type selected
+    const invalidQuestion = questions.find(q => 
+      q.answers.some(a => !a.personalityType)
+    );
+    if (invalidQuestion) {
+      alert('Please select a personality type for all answers');
+      return;
+    }
+
+    setSaving(true);
+    
+    try {
+      console.log('Saving quiz with data:', {
+        title,
+        description,
+        questions: questions.length,
+        personalityTypes: personalityTypes.length,
+        isPublished,
+        slug
+      });
+
+      const result = await onSave({
+        title,
+        description,
+        coverImageUrl: quiz?.coverImageUrl,
+        questions,
+        personalityTypes,
+        isPublished,
+        slug
+      }, coverImageFile || undefined);
+      
+      console.log('Save result:', result);
+      if (!result.error) {
+        console.log('Setting showSaveSuccess to true');
+        setShowSaveSuccess(true);
+      } else {
+        console.error('Save error:', result.error);
+        alert(`Failed to save quiz: ${result.error.message}`);
+      }
+    } catch (error) {
+      console.error('Error in handleSave:', error);
+      alert(`Failed to save quiz: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const addQuestion = () => {
     const newQuestion: Question = {
@@ -147,54 +263,6 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
     ));
   };
 
-  const handleSave = async () => {
-    if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    // Validate slug format
-    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-    if (!slugRegex.test(slug)) {
-      alert('Slug must contain only lowercase letters, numbers, and hyphens');
-      return;
-    }
-
-    // Validate that all answers have a personality type selected
-    const invalidQuestion = questions.find(q => 
-      q.answers.some(a => !a.personalityType)
-    );
-    if (invalidQuestion) {
-      alert('Please select a personality type for all answers');
-      return;
-    }
-
-    setSaving(true);
-    
-    try {
-      const result = await onSave({
-        title,
-        description,
-        coverImageUrl: quiz?.coverImageUrl,
-        questions,
-        personalityTypes,
-        isPublished,
-        slug
-      }, coverImageFile || undefined);
-      
-      if (!result.error) {
-        setShowSaveSuccess(true);
-      } else {
-        alert('Failed to save quiz: ' + result.error.message);
-      }
-    } catch (error) {
-      console.error('Error saving quiz:', error);
-      alert('Failed to save quiz. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -220,9 +288,11 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
         id: Math.random().toString(36).substr(2, 9),
         orderIndex: index,
         answers: q.answers.map((a: Omit<Answer, 'id'>, aIndex: number) => {
+          // For imported quizzes, personality type should be mapped by name
           const matchingType = personalityTypes.find((pt: PersonalityType) => pt.name === a.personalityType);
           if (!matchingType) {
-            throw new Error(`Personality type ${a.personalityType} not found in the quiz data`);
+            console.error('Available personality types:', personalityTypes.map(pt => pt.name));
+            throw new Error(`Personality type "${a.personalityType}" not found in the quiz data`);
           }
           return {
             ...a,
@@ -252,346 +322,255 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-white dark:bg-gray-800">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <button
+            onClick={onClose}
+            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            <ArrowLeft className="w-5 h-5 mr-2" />
+            Back to Dashboard
+          </button>
+          <div className="flex items-center space-x-4">
             <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={handleSave}
+              disabled={saving}
+              className={`px-6 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium flex items-center ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              <ArrowLeft className="w-5 h-5" />
+              <Save className="w-5 h-5 mr-2" />
+              {saving ? 'Saving...' : 'Save'}
             </button>
-            <h1 className="text-xl font-semibold">{quiz ? 'Edit Quiz' : 'Create New Quiz'}</h1>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPublished}
-                  onChange={(e) => setIsPublished(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
-                <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300">
-                  {isPublished ? 'Published' : 'Draft'}
-                </span>
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleImportJSON}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Import JSON
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {saving ? 'Saving...' : 'Save Quiz'}
-              </button>
-            </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-6">
-          <nav className="flex space-x-8">
-            {[
-              { id: 'basic', label: 'Basic Info' },
-              { id: 'types', label: 'Personality Types' },
-              { id: 'questions', label: 'Questions' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-purple-500 text-purple-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        <div className="space-y-6">
+          <div className="flex space-x-4 mb-8">
+            <button
+              onClick={() => setActiveTab('basic')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'basic' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              Basic Info
+            </button>
+            <button
+              onClick={() => setActiveTab('questions')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'questions' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              Questions
+            </button>
+            <button
+              onClick={() => setActiveTab('types')}
+              className={`px-4 py-2 rounded-lg font-medium ${activeTab === 'types' ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              Personality Types
+            </button>
+          </div>
 
-        {activeTab === 'basic' && (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
-            <ImageUpload
-              currentImage={quiz?.coverImageUrl}
-              onImageChange={setCoverImageFile}
-              onImageRemove={() => setCoverImageFile(null)}
-              label="Cover Image"
-              className="mb-6"
-            />
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Quiz Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Enter quiz title..."
-              />
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Quiz URL Slug
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500">quizgamez.com/</span>
+          {/* Tab content */}
+          {activeTab === 'basic' && (
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Title
+                </label>
                 <input
                   type="text"
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="your-quiz-name"
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="Enter quiz title"
                 />
               </div>
-              <p className="mt-1 text-sm text-gray-500">
-                This will be the URL of your quiz. Use only lowercase letters, numbers, and hyphens.
-              </p>
-            </div>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Describe what your quiz is about..."
-              />
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'questions' && (
-          <div className="space-y-6">
-            {questions.map((question, index) => (
-              <div key={question.id} className="bg-white rounded-lg p-6 shadow-sm">
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-medium">Question {index + 1}</h3>
-                  <button
-                    onClick={() => removeQuestion(question.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    value={question.text}
-                    onChange={(e) => updateQuestion(question.id, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="Enter your question..."
-                  />
-                </div>
-                
-                <ImageUpload
-                  currentImage={question.imageUrl}
-                  onImageChange={(file) => updateQuestionImage(question.id, file)}
-                  onImageRemove={() => removeQuestionImage(question.id)}
-                  label="Question Image (Optional)"
-                  className="mb-4"
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="Enter quiz description"
                 />
-                
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900">Answer Options</h4>
-                    <button
-                      onClick={() => addAnswer(question.id)}
-                      className="text-purple-600 hover:text-purple-700 text-sm font-medium"
-                    >
-                      + Add Answer
-                    </button>
-                  </div>
-                  
-                  {question.answers.map((answer) => (
-                    <div key={answer.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
+              </div>
+
+              <div>
+                <label htmlFor="slug" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Slug
+                </label>
+                <input
+                  type="text"
+                  id="slug"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="Enter URL slug"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Cover Image
+                </label>
+                <ImageUpload
+                    currentImage={quiz?.coverImageUrl}
+                    onImageChange={setCoverImageFile}
+                    onImageRemove={() => setCoverImageFile(null)}
+                    label="Upload cover image"
+                  />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'questions' && (
+            <div className="space-y-8">
+              {questions.map((question, index) => (
+                <div key={question.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 mr-4">
                       <input
                         type="text"
-                        value={answer.text}
-                        onChange={(e) => updateAnswer(question.id, answer.id, { text: e.target.value })}
-                        className="flex-1 px-2 py-1 border-none focus:ring-0"
-                        placeholder="Answer text..."
+                        value={question.text}
+                        onChange={(e) => updateQuestion(question.id, e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        placeholder={`Question ${index + 1}`}
                       />
-                      
-                      <select
-                        value={answer.personalityType}
-                        onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      >
-                        <option value="">Select type...</option>
-                        {personalityTypes.map((type) => (
-                          <option key={type.id} value={type.id}>
-                            {type.name}
-                          </option>
-                        ))}
-                      </select>
-                      
-                      <button
-                        onClick={() => removeAnswer(question.id, answer.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            
-            <button
-              onClick={addQuestion}
-              className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-purple-300 hover:text-purple-600 transition-colors"
-            >
-              <Plus className="w-5 h-5 mx-auto mb-2" />
-              Add New Question
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'types' && (
-          <div className="space-y-6">
-            {personalityTypes.map((type) => (
-              <div key={type.id} className="bg-white rounded-lg p-6 shadow-sm">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: type.color + '20', color: type.color }}
+                    <button
+                      onClick={() => removeQuestion(question.id)}
+                      className="text-red-500 hover:text-red-600"
                     >
-                      ★
-                    </div>
-                    <h3 className="text-lg font-medium">Personality Type</h3>
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => removePersonalityType(type.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+
+                  <div className="mb-4">
+                    <ImageUpload
+                      currentImage={question.imageUrl}
+                      onImageChange={(file) => updateQuestionImage(question.id, file)}
+                      onImageRemove={() => removeQuestionImage(question.id)}
+                      label="Question image"
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                    {question.answers.map((answer, answerIndex) => (
+                      <div key={answer.id} className="flex items-center space-x-4">
+                        <input
+                          type="text"
+                          value={answer.text}
+                          onChange={(e) => updateAnswer(question.id, answer.id, { text: e.target.value })}
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          placeholder={`Answer ${answerIndex + 1}`}
+                        />
+                        <select
+                          value={answer.personalityType}
+                          onChange={(e) => updateAnswer(question.id, answer.id, { personalityType: e.target.value })}
+                          className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        >
+                          <option value="">Select Type</option>
+                          {personalityTypes.map((type) => (
+                            <option key={type.id} value={type.id}>
+                              {type.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => removeAnswer(question.id, answer.id)}
+                          className="text-red-500 hover:text-red-600"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addAnswer(question.id)}
+                      className="flex items-center text-purple-600 hover:text-purple-700"
+                    >
+                      <Plus className="w-5 h-5 mr-2" />
+                      Add Answer
+                    </button>
+                  </div>
                 </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Type Name
-                    </label>
-                    <input
-                      type="text"
-                      value={type.name}
-                      onChange={(e) => updatePersonalityType(type.id, { name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      placeholder="e.g., The Creative Leader"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={type.description}
-                      onChange={(e) => updatePersonalityType(type.id, { description: e.target.value })}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      placeholder="Describe this personality type..."
-                    />
-                  </div>
-                  
-                  <ImageUpload
-                    currentImage={type.resultImageUrl}
-                    onImageChange={(file) => updatePersonalityTypeImage(type.id, file)}
-                    onImageRemove={() => removePersonalityTypeImage(type.id)}
-                    label="Result Image (Optional)"
-                    className="mb-4"
-                  />
-                  
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Color
-                      </label>
+              ))}
+              <button
+                onClick={addQuestion}
+                className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:text-purple-600 hover:border-purple-600 dark:hover:text-purple-400 dark:hover:border-purple-400 flex items-center justify-center"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Question
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'types' && (
+            <div className="space-y-6">
+              {personalityTypes.map((type) => (
+                <div key={type.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1 space-y-4 mr-4">
                       <input
-                        type="color"
-                        value={type.color}
-                        onChange={(e) => updatePersonalityType(type.id, { color: e.target.value })}
-                        className="w-12 h-8 border border-gray-300 rounded cursor-pointer"
+                        type="text"
+                        value={type.name}
+                        onChange={(e) => updatePersonalityType(type.id, { name: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        placeholder="Type name"
+                      />
+                      <textarea
+                        value={type.description}
+                        onChange={(e) => updatePersonalityType(type.id, { description: e.target.value })}
+                        rows={3}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        placeholder="Type description"
                       />
                     </div>
+                    <button
+                      onClick={() => removePersonalityType(type.id)}
+                      className="text-red-500 hover:text-red-600"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="mb-4">
+                    <ImageUpload
+                      currentImage={type.resultImageUrl}
+                      onImageChange={(file) => updatePersonalityTypeImage(type.id, file)}
+                      onImageRemove={() => removePersonalityTypeImage(type.id)}
+                      label="Result image"
+                    />
+                  </div>
+
+                  <div className="flex space-x-4">
+                    <input
+                      type="color"
+                      value={type.color}
+                      onChange={(e) => updatePersonalityType(type.id, { color: e.target.value })}
+                      className="h-10 w-20 rounded cursor-pointer"
+                    />
                   </div>
                 </div>
-              </div>
-            ))}
-            
-            <button
-              onClick={addPersonalityType}
-              className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-purple-300 hover:text-purple-600 transition-colors"
-            >
-              <Plus className="w-5 h-5 mx-auto mb-2" />
-              Add New Personality Type
-            </button>
-          </div>
-        )}
+              ))}
+              <button
+                onClick={addPersonalityType}
+                className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:text-purple-600 hover:border-purple-600 dark:hover:text-purple-400 dark:hover:border-purple-400 flex items-center justify-center"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Personality Type
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {showSaveSuccess && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-sm w-full mx-4 shadow-xl">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                <Save className="w-6 h-6 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2 text-center">Quiz Saved Successfully!</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6 text-center">
-              Your quiz has been saved. What would you like to do next?
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  setShowSaveSuccess(false);
-                  onClose();
-                }}
-                className="w-full px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
-              >
-                Save & Close Editor
-              </button>
-              <button
-                onClick={() => setShowSaveSuccess(false)}
-                className="w-full px-4 py-2.5 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors font-medium"
-              >
-                Save & Continue Editing
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SaveSuccessDialog 
+        show={showSaveSuccess}
+        onClose={() => setShowSaveSuccess(false)}
+        onCloseEditor={onClose}
+      />
     </div>
   );
 }

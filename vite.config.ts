@@ -5,10 +5,34 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ['lucide-react'],
+    include: [
+      'lucide-react',
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@supabase/supabase-js',
+      'zustand',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-label',
+      '@radix-ui/react-select',
+      '@radix-ui/react-slot'
+    ],
+    esbuildOptions: {
+      target: 'es2020'
+    }
   },
   server: {
     historyApiFallback: true,
+    hmr: {
+      overlay: false
+    }
   },
   base: '/',
+  build: {
+    sourcemap: true,
+    commonjsOptions: {
+      include: [/node_modules/]
+    }
+  }
 });

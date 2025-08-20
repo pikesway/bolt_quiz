@@ -286,8 +286,7 @@ export function useQuizzes() {
       if (!dbPersonalityTypes) throw new Error('Failed to create personality types');
 
       // Create a map of personality type names to their IDs
-      // Remove unused personalityTypeMap since it's not being used anywhere
-      dbPersonalityTypes.reduce((acc, pt) => {
+      const personalityTypeMap = dbPersonalityTypes.reduce((acc, pt) => {
         acc[pt.name] = pt.id;
         return acc;
       }, {} as Record<string, string>);
@@ -312,14 +311,14 @@ export function useQuizzes() {
       // Find matching personality type for each answer
       const answers = quiz.questions.flatMap((q, qIndex) =>
         q.answers.map((a, aIndex) => {
-          const matchingType = dbPersonalityTypes.find(pt => pt.name === a.personalityType);
-          if (!matchingType) {
+          const typeId = personalityTypeMap[a.personalityType];
+          if (!typeId) {
             throw new Error(`Personality type ${a.personalityType} not found`);
           }
           return {
             question_id: dbQuestions[qIndex].id,
             text: a.text,
-            personality_type_id: matchingType.id,
+            personality_type_id: typeId,
             weight: a.weight,
             order_index: aIndex,
             created_at: new Date().toISOString()
@@ -378,10 +377,12 @@ export function useQuizzes() {
 
   const updateQuiz = async (quizId: string, quizData: Omit<Quiz, 'id' | 'createdAt' | 'updatedAt' | 'totalTakes'>, coverImageFile?: File) => {
     try {
+      console.log('Starting quiz update...');
       setLoading(true);
       setError(null);
 
       // Update quiz basic info
+      console.log('Updating quiz basic info...');
       const { error: quizError } = await supabase
         .from('quizzes')
         .update({
@@ -395,6 +396,7 @@ export function useQuizzes() {
       if (quizError) throw quizError;
 
       // Update personality types
+      console.log('Updating personality types...');
       const { error: deleteTypesError } = await supabase
         .from('personality_types')
         .delete()
@@ -421,6 +423,7 @@ export function useQuizzes() {
       if (!dbPersonalityTypes) throw new Error('Failed to update personality types');
 
       // Delete existing questions and answers
+      console.log('Updating questions and answers...');
       const { error: deleteQuestionsError } = await supabase
         .from('questions')
         .delete()
@@ -445,12 +448,34 @@ export function useQuizzes() {
       if (questionsError) throw questionsError;
       if (!dbQuestions) throw new Error('Failed to update questions');
 
+      // Create a map of personality type names and IDs to their full objects
+      console.log('Creating personality type maps...');
+      const personalityTypeMap = dbPersonalityTypes.reduce((acc, pt) => {
+        // Store by ID only to ensure consistent mapping
+        acc[pt.id] = pt;
+        return acc;
+      }, {} as Record<string, typeof dbPersonalityTypes[0]>);
+      
+      // Create a separate map for looking up types by name during import
+      const personalityTypeNameMap = dbPersonalityTypes.reduce((acc, pt) => {
+        acc[pt.name] = pt;
+        return acc;
+      }, {} as Record<string, typeof dbPersonalityTypes[0]>);
+
       // Insert updated answers
+      console.log('Inserting updated answers...');
       const answers = quizData.questions.flatMap((q, qIndex) =>
         q.answers.map((a, aIndex) => {
-          const matchingType = dbPersonalityTypes.find(pt => pt.name === a.personalityType);
+          // Try to match by ID first, then fall back to name matching for imported quizzes
+          let matchingType = personalityTypeMap[a.personalityType];
           if (!matchingType) {
-            throw new Error(`Personality type ${a.personalityType} not found`);
+            matchingType = personalityTypeNameMap[a.personalityType];
+            if (!matchingType) {
+              console.error('No matching type found for:', a.personalityType);
+              console.log('Available types by ID:', Object.keys(personalityTypeMap));
+              console.log('Available types by name:', Object.keys(personalityTypeNameMap));
+              throw new Error(`Personality type ${a.personalityType} not found`);
+            }
           }
           return {
             question_id: dbQuestions[qIndex].id,
@@ -471,6 +496,7 @@ export function useQuizzes() {
 
       // Handle cover image update if provided
       if (coverImageFile) {
+        console.log('Updating cover image...');
         const imagePath = `${user?.id}/covers/${Date.now()}-${coverImageFile.name}`;
         const { error: uploadError } = await supabase.storage
           .from('quiz-images')
@@ -492,14 +518,16 @@ export function useQuizzes() {
 
       // Reload quizzes to update the list
       if (user) {
+        console.log('Reloading quizzes...');
         await loadQuizzes(user.id);
       }
 
+      console.log('Quiz update completed successfully');
       return { error: null };
     } catch (error) {
       console.error('Error updating quiz:', error);
       setError(error as Error);
-      return { error };
+      return { error: error instanceof Error ? error : new Error('Failed to update quiz') };
     } finally {
       setLoading(false);
     }
