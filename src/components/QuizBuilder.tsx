@@ -56,6 +56,8 @@ export function QuizBuilder({ quiz, onSave, onClose }: QuizBuilderProps) {
   }, []);
 
   const handleSave = async () => {
+    setShowSaveSuccess(false); // Reset toast state before saving
+    
     if (!title || !description || !slug || questions.length === 0 || personalityTypes.length === 0) {
       alert('Please fill in all required fields');
       return;

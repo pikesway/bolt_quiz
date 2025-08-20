@@ -237,12 +237,12 @@ export function useQuizzes() {
 
   const createQuiz = async (quiz: Quiz, coverImageFile?: File) => {
     try {
-      // Don't set loading state here as it will trigger a re-render
-      // and cause the dashboard to show loading state unnecessarily
+      console.log('Starting quiz creation...');
       setError(null);
       const timestamp = Date.now();
-      const slug = `${slugify(quiz.title)}-${timestamp}`;
+      const slug = quiz.slug || `${slugify(quiz.title)}-${timestamp}`;
 
+      console.log('Creating quiz with slug:', slug);
       let quizData;
       const { data: dbQuiz, error: quizError } = await supabase
         .from('quizzes')
@@ -251,7 +251,7 @@ export function useQuizzes() {
           description: quiz.description,
           user_id: user?.id,
           slug: slug,
-          is_published: false,
+          is_published: quiz.isPublished || false,
           total_takes: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -264,9 +264,11 @@ export function useQuizzes() {
         throw quizError;
       }
 
+      console.log('Quiz created successfully:', dbQuiz.id);
       quizData = dbQuiz;
 
       // Insert personality types
+      console.log('Creating personality types...');
       const personalityTypesWithQuizId = quiz.personalityTypes.map(pt => ({
         quiz_id: quizData.id,
         name: pt.name,
@@ -285,6 +287,8 @@ export function useQuizzes() {
       if (personalityTypesError) throw personalityTypesError;
       if (!dbPersonalityTypes) throw new Error('Failed to create personality types');
 
+      console.log('Personality types created successfully');
+
       // Create a map of personality type names to their IDs
       const personalityTypeMap = dbPersonalityTypes.reduce((acc, pt) => {
         acc[pt.name] = pt.id;
@@ -292,6 +296,7 @@ export function useQuizzes() {
       }, {} as Record<string, string>);
 
       // Insert questions
+      console.log('Creating questions...');
       const questionsWithQuizId = quiz.questions.map((q, index) => ({
         quiz_id: quizData.id,
         text: q.text,
@@ -308,18 +313,24 @@ export function useQuizzes() {
       if (questionsError) throw questionsError;
       if (!dbQuestions) throw new Error('Failed to create questions');
 
+      console.log('Questions created successfully');
+
       // Find matching personality type for each answer
+      console.log('Creating answers...');
       const answers = quiz.questions.flatMap((q, qIndex) =>
         q.answers.map((a, aIndex) => {
+          // Try to match by name first
           const typeId = personalityTypeMap[a.personalityType];
           if (!typeId) {
+            console.error('Available personality types:', personalityTypeMap);
+            console.error('Attempted to match:', a.personalityType);
             throw new Error(`Personality type ${a.personalityType} not found`);
           }
           return {
             question_id: dbQuestions[qIndex].id,
             text: a.text,
             personality_type_id: typeId,
-            weight: a.weight,
+            weight: a.weight || 1,
             order_index: aIndex,
             created_at: new Date().toISOString()
           };
@@ -331,6 +342,7 @@ export function useQuizzes() {
         .insert(answers);
 
       if (answersError) throw answersError;
+      console.log('Answers created successfully');
 
       // Upload cover image if provided
       if (coverImageFile) {
